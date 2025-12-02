@@ -23,11 +23,11 @@ func (d *ASTData) CreateSnapshot() (*ASTSnapshot, error) {
 	nodeInfoCopy := make(map[ast.Node]*AdditionalInfo)
 	for node, info := range d.NodeInfo {
 		infoCopy := &AdditionalInfo{
-			Data: make(map[string]interface{}),
+			Data:         make(map[string]interface{}),
+			FuncContract: info.FuncContract,
+			LoopSpec:     info.LoopSpec,
 		}
-		for k, v := range info.Data {
-			infoCopy.Data[k] = v
-		}
+
 		nodeInfoCopy[node] = infoCopy
 	}
 
@@ -47,12 +47,11 @@ func (d *ASTData) RestoreFromSnapshot(snapshot *ASTSnapshot) error {
 	d.File = file
 	d.FileSet = fset
 	d.NodeInfo = make(map[ast.Node]*AdditionalInfo)
-	for _, info := range snapshot.nodeInfo {
-		infoCopy := &AdditionalInfo{
-			Data: make(map[string]interface{}),
-		}
-		for k, v := range info.Data {
-			infoCopy.Data[k] = v
+	for node, info := range snapshot.nodeInfo {
+		d.NodeInfo[node] = &AdditionalInfo{
+			Data:         make(map[string]interface{}),
+			FuncContract: info.FuncContract,
+			LoopSpec:     info.LoopSpec,
 		}
 	}
 
