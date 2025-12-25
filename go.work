@@ -1,8 +1,6 @@
 go 1.25.2
 
 use (
-    ./framework
-	./ir
-	./parser
-	./plugin
+	./framework
+	./samples/dynamic_checks/abs
 )
