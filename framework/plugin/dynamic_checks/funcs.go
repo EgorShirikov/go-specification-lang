@@ -43,7 +43,9 @@ func processFunc(funcDecl *ast.FuncDecl, contract *specir.FuncContract, strictMo
 	var newStmts []ast.Stmt
 
 	var preconditionsPassedVar *ast.Ident
-	if !strictMode && len(contract.Requires) > 0 {
+	var hasRequires = len(contract.Requires) > 0
+
+	if !strictMode && hasRequires {
 		preconditionsPassedVar = &ast.Ident{Name: "__preconditions_passed"}
 		newStmts = append(newStmts, &ast.AssignStmt{
 			Lhs: []ast.Expr{preconditionsPassedVar},
@@ -57,7 +59,7 @@ func processFunc(funcDecl *ast.FuncDecl, contract *specir.FuncContract, strictMo
 		condition := converter.Convert(req.Expr)
 
 		if strictMode {
-			checkCall := createCheckCall(condition, "requires", req.Label)
+			checkCall := createCheckCall(condition, "precondition", req.Label)
 			newStmts = append(newStmts, &ast.ExprStmt{X: checkCall})
 		} else {
 			// if !condition { __preconditions_passed = false }
@@ -102,12 +104,12 @@ func processFunc(funcDecl *ast.FuncDecl, contract *specir.FuncContract, strictMo
 	for _, ens := range contract.Ensures {
 		condition := converter.Convert(ens.Expr)
 
-		if strictMode {
-			checkCall := createCheckCall(condition, "ensures", ens.Label)
+		if strictMode || !hasRequires {
+			checkCall := createCheckCall(condition, "postcondition", ens.Label)
 			deferCheck := &ast.DeferStmt{Call: checkCall}
 			newStmts = append(newStmts, deferCheck)
 		} else {
-			checkCall := createCheckCall(condition, "ensures", ens.Label)
+			checkCall := createCheckCall(condition, "postcondition", ens.Label)
 
 			// defer func() { if __preconditions_passed { checks.Check(...) } }()
 			deferFunc := &ast.FuncLit{
