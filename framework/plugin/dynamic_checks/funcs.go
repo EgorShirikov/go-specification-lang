@@ -10,13 +10,13 @@ import (
 	"gpma/framework/plugin"
 )
 
-func processFunctions(astData *data.ASTData, result *plugin.PluginResult) {
+func processFunctions(astData *data.ASTData, result *plugin.PluginResult, strictMode bool) {
 	ast.Inspect(astData.File, func(n ast.Node) bool {
 		switch node := n.(type) {
 		case *ast.FuncDecl:
 			info := astData.TryGetNodeInfo(node)
 			if info != nil && info.FuncContract != nil {
-				if processFunc(node, info.FuncContract) {
+				if processFunc(node, info.FuncContract, strictMode) {
 					result.WithASTModified()
 				}
 				node_info := astData.GetNodeInfo(node)
@@ -28,7 +28,7 @@ func processFunctions(astData *data.ASTData, result *plugin.PluginResult) {
 	})
 }
 
-func processFunc(funcDecl *ast.FuncDecl, contract *specir.FuncContract) bool {
+func processFunc(funcDecl *ast.FuncDecl, contract *specir.FuncContract, strictMode bool) bool {
 	if funcDecl.Body == nil {
 		return false
 	}
@@ -42,11 +42,41 @@ func processFunc(funcDecl *ast.FuncDecl, contract *specir.FuncContract) bool {
 
 	var newStmts []ast.Stmt
 
+	var preconditionsPassedVar *ast.Ident
+	if !strictMode && len(contract.Requires) > 0 {
+		preconditionsPassedVar = &ast.Ident{Name: "__preconditions_passed"}
+		newStmts = append(newStmts, &ast.AssignStmt{
+			Lhs: []ast.Expr{preconditionsPassedVar},
+			Tok: token.DEFINE,
+			Rhs: []ast.Expr{&ast.Ident{Name: "true"}},
+		})
+	}
+
 	// Добавляем проверки requires
 	for _, req := range contract.Requires {
 		condition := converter.Convert(req.Expr)
-		checkCall := createCheckCall(condition, "requires", req.Label)
-		newStmts = append(newStmts, &ast.ExprStmt{X: checkCall})
+
+		if strictMode {
+			checkCall := createCheckCall(condition, "requires", req.Label)
+			newStmts = append(newStmts, &ast.ExprStmt{X: checkCall})
+		} else {
+			// if !condition { __preconditions_passed = false }
+			newStmts = append(newStmts, &ast.IfStmt{
+				Cond: &ast.UnaryExpr{
+					Op: token.NOT,
+					X:  condition,
+				},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.AssignStmt{
+							Lhs: []ast.Expr{preconditionsPassedVar},
+							Tok: token.ASSIGN,
+							Rhs: []ast.Expr{&ast.Ident{Name: "false"}},
+						},
+					},
+				},
+			})
+		}
 	}
 
 	// Объявление переменных для \old
@@ -71,9 +101,31 @@ func processFunc(funcDecl *ast.FuncDecl, contract *specir.FuncContract) bool {
 	// Добавляем проверки ensures (defer)
 	for _, ens := range contract.Ensures {
 		condition := converter.Convert(ens.Expr)
-		checkCall := createCheckCall(condition, "ensures", ens.Label)
-		deferCheck := &ast.DeferStmt{Call: checkCall}
-		newStmts = append(newStmts, deferCheck)
+
+		if strictMode {
+			checkCall := createCheckCall(condition, "ensures", ens.Label)
+			deferCheck := &ast.DeferStmt{Call: checkCall}
+			newStmts = append(newStmts, deferCheck)
+		} else {
+			checkCall := createCheckCall(condition, "ensures", ens.Label)
+
+			// defer func() { if __preconditions_passed { checks.Check(...) } }()
+			deferFunc := &ast.FuncLit{
+				Type: &ast.FuncType{Params: &ast.FieldList{}},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.IfStmt{
+							Cond: preconditionsPassedVar,
+							Body: &ast.BlockStmt{
+								List: []ast.Stmt{&ast.ExprStmt{X: checkCall}},
+							},
+						},
+					},
+				},
+			}
+			deferCheck := &ast.DeferStmt{Call: &ast.CallExpr{Fun: deferFunc}}
+			newStmts = append(newStmts, deferCheck)
+		}
 	}
 
 	if len(newStmts) > 0 {

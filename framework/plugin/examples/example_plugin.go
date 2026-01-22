@@ -15,6 +15,11 @@ func init() {
 
 type ExamplePlugin struct{}
 
+// Configure implements [plugin.Plugin].
+func (p *ExamplePlugin) Configure(params map[string]interface{}) error {
+	panic("unimplemented")
+}
+
 func NewExamplePlugin() *ExamplePlugin {
 	return &ExamplePlugin{}
 }

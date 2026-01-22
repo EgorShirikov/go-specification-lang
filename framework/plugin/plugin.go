@@ -40,4 +40,11 @@ func (r *PluginResult) HasModifications() bool {
 type Plugin interface {
 	Name() string
 	Process(astData *data.ASTData) *PluginResult
+	Configure(params map[string]interface{}) error
+}
+
+type ConfigurablePlugin struct{}
+
+func (cp *ConfigurablePlugin) Configure(params map[string]interface{}) error {
+	return nil
 }

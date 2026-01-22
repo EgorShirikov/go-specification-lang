@@ -1,6 +1,7 @@
 package dynamicchecks
 
 import (
+	"errors"
 	"go/ast"
 	"go/token"
 	"gpma/framework/data"
@@ -13,14 +14,41 @@ func init() {
 	})
 }
 
-type DynamicChecksPlugin struct{}
+type DynamicChecksPlugin struct {
+	strictMode bool // true - строгий режим, false - нестрогий
+}
 
 func NewDynamicChecksPlugin() *DynamicChecksPlugin {
-	return &DynamicChecksPlugin{}
+	return &DynamicChecksPlugin{
+		strictMode: true, // по умолчанию строгий режим
+	}
 }
 
 func (p *DynamicChecksPlugin) Name() string {
 	return "DynamicChecksPlugin"
+}
+
+func (p *DynamicChecksPlugin) Configure(params map[string]interface{}) error {
+	if val, ok := params["strict_mode"]; ok {
+		if strict, ok := val.(bool); ok {
+			p.strictMode = strict
+		} else {
+			if strVal, ok := val.(string); ok {
+				switch strVal {
+				case "true", "strict", "yes":
+					p.strictMode = true
+				case "false", "lenient", "no":
+					p.strictMode = false
+				default:
+					return errors.New("strict_mode: must be boolean or one of: true, false, strict, lenient, yes, no")
+				}
+			} else {
+				return errors.New("strict_mode: must be boolean or string")
+			}
+		}
+	}
+
+	return nil
 }
 
 func (p *DynamicChecksPlugin) Process(astData *data.ASTData) *plugin.PluginResult {
@@ -28,7 +56,7 @@ func (p *DynamicChecksPlugin) Process(astData *data.ASTData) *plugin.PluginResul
 
 	addImport(astData.File)
 
-	processFunctions(astData, result)
+	processFunctions(astData, result, p.strictMode)
 	processLoops(astData, result)
 
 	return result

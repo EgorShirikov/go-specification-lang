@@ -34,3 +34,17 @@ CHECK_MODE=silent go run --overlay overlays/gpma_overlay.json samples/projects/i
 ```bash
 CHECK_MODE=panic go run --overlay overlays/gpma_overlay.json samples/projects/interactive/main.go
 ```
+
+# different strictness modes
+
+Проверка постусловий только если предусловия выполнены. Нарушение предусловий - не ошибка.
+
+```bash
+go run framework/cli/main.go project -p dynamic_checks --plugin-config 'dynamic_checks:strict_mode:false' samples/projects/interactive/ overlays/
+```
+
+Безусловная проверка предусловий и постусловий.
+
+```bash
+go run framework/cli/main.go project -p dynamic_checks --plugin-config 'dynamic_checks:strict_mode:true' samples/projects/interactive/ overlays/
+```

@@ -16,6 +16,11 @@ func init() {
 
 type AddTracePlugin struct{}
 
+// Configure implements [plugin.Plugin].
+func (p *AddTracePlugin) Configure(params map[string]interface{}) error {
+	panic("unimplemented")
+}
+
 func NewAddTracePlugin() *AddTracePlugin {
 	return &AddTracePlugin{}
 }

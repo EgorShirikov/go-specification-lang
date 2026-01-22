@@ -97,7 +97,7 @@ func (c *Converter) convertLiteral(lit *specir.ExprLiteral) ast.Expr {
 	case specir.LitFloat:
 		return &ast.BasicLit{
 			Kind:  token.FLOAT,
-			Value: fmt.Sprintf("%f", lit.Real),
+			Value: fmt.Sprintf("%f", lit.Float),
 		}
 	case specir.LitString:
 		return &ast.BasicLit{
