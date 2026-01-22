@@ -7,15 +7,16 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/urfave/cli/v2"
 	"gpma/framework"
 	_ "gpma/framework/plugin/dynamic_checks"
 	_ "gpma/framework/plugin/examples"
+
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
 	app := &cli.App{
-		Name:  "framework",
+		Name:  "gpma-cli",
 		Usage: "Process Go files with specification plugins",
 		Commands: []*cli.Command{
 			{
@@ -242,7 +243,7 @@ func processProject(projectDir, outputDir string, pluginNames []string) error {
 		"Replace": overlay,
 	}
 
-	overlayPath := filepath.Join(absOutputDir, "gmpa_overlay.json")
+	overlayPath := filepath.Join(absOutputDir, "gpma_overlay.json")
 	overlayData, err := json.MarshalIndent(overlayJSON, "", "  ")
 	if err != nil {
 		return cli.Exit(fmt.Sprintf("Failed to marshal overlay JSON: %v", err), 1)

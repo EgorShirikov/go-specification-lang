@@ -2,7 +2,25 @@ package check
 
 import (
 	"fmt"
+	"os"
 	"runtime"
+	"strings"
+	"time"
+)
+
+type Mode int
+
+const (
+	PanicMode Mode = iota
+	LogToConsoleMode
+	LogToFileMode
+	SilentMode
+)
+
+var (
+	modeEnv     = "CHECK_MODE"
+	pathEnv     = "CHECK_LOG_PATH"
+	defaultMode = "panic"
 )
 
 func Check(condition bool, messages ...any) {
@@ -18,6 +36,74 @@ func Check(condition bool, messages ...any) {
 			msg += ": " + fmt.Sprint(messages...)
 		}
 
-		panic(msg)
+		handleViolation(msg)
 	}
+}
+
+func ParseMode(s string) (Mode, error) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "panic", "panicmode", "0":
+		return PanicMode, nil
+	case "console", "logtoconsole", "logtoconsolemode", "1":
+		return LogToConsoleMode, nil
+	case "file", "logtofile", "logtofilemode", "2":
+		return LogToFileMode, nil
+	case "silent", "silentmode", "3":
+		return SilentMode, nil
+	default:
+		return PanicMode, fmt.Errorf("unknown mode: %s", s)
+	}
+}
+
+func getCurrentMode() Mode {
+	modeStr := os.Getenv(modeEnv)
+	if modeStr == "" {
+		modeStr = defaultMode
+	}
+
+	m, err := ParseMode(modeStr)
+	if err != nil {
+		return PanicMode
+	}
+	return m
+}
+
+func handleViolation(msg string) {
+	mode := getCurrentMode()
+
+	switch mode {
+	case PanicMode:
+		panic(msg)
+	case LogToConsoleMode:
+		fmt.Fprintln(os.Stderr, msg)
+	case LogToFileMode:
+		path := os.Getenv(pathEnv)
+		if path == "" {
+			panic(fmt.Sprintf("CHECK_LOG_PATH environment variable is not set for file mode, message: %s", msg))
+		}
+
+		if err := logToFile(msg, path); err != nil {
+			panic(fmt.Sprintf("failed to log to file: %v, message: %s", err, msg))
+		}
+	case SilentMode:
+	}
+}
+
+func logToFile(msg, path string) error {
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	logMsg := fmt.Sprintf("%s: %s\n", getTimestamp(), msg)
+	if _, err := file.WriteString(logMsg); err != nil {
+		return err
+	}
+
+	return file.Sync()
+}
+
+func getTimestamp() string {
+	return time.Now().Format("2006-01-02 15:04:05")
 }

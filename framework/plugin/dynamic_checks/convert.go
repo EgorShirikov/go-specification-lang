@@ -73,7 +73,7 @@ func (c *Converter) Convert(expr specir.Expr) ast.Expr {
 	case *specir.ExprOld:
 		return c.convertOld(e)
 	default:
-		return &ast.Ident{Name: "true"}
+		panic("Must not happen")
 	}
 }
 
@@ -94,13 +94,18 @@ func (c *Converter) convertLiteral(lit *specir.ExprLiteral) ast.Expr {
 			Kind:  token.FLOAT,
 			Value: fmt.Sprintf("%f", lit.Real),
 		}
+	case specir.LitFloat:
+		return &ast.BasicLit{
+			Kind:  token.FLOAT,
+			Value: fmt.Sprintf("%f", lit.Real),
+		}
 	case specir.LitString:
 		return &ast.BasicLit{
 			Kind:  token.STRING,
 			Value: fmt.Sprintf(`"%s"`, lit.Str),
 		}
 	default:
-		return &ast.Ident{Name: "true"}
+		panic("Must not happen")
 	}
 }
 
