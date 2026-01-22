@@ -13,4 +13,4 @@
 
 # run with enabled checks
 
-`go run --overlay overlays/gmpa_overlay.json samples/projects/simple/main.go`
+`go run --overlay overlays/gpma_overlay.json samples/projects/simple/main.go`

@@ -12,9 +12,13 @@ import (
 	_ "gpma/framework/plugin/examples"
 
 	"github.com/urfave/cli/v2"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func main() {
+	log.SetLevel(log.InfoLevel)
+
 	app := &cli.App{
 		Name:  "gpma-cli",
 		Usage: "Process Go files with specification plugins",

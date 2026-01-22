@@ -1,7 +1,6 @@
 package front
 
 import (
-	"fmt"
 	acsl "gpma/framework/gosl/front/generated/grammar/acsl"
 	grammar "gpma/framework/gosl/front/generated/grammar/acsl"
 	specir "gpma/framework/gosl/ir"
@@ -9,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/antlr4-go/antlr/v4"
+	log "github.com/sirupsen/logrus"
 )
 
 func (b *ACSLBuilder) VisitAcsl_comment(ctx *acsl.Acsl_commentContext) interface{} {
@@ -50,10 +50,10 @@ func (b *ACSLBuilder) VisitAcsl_comment_contract(ctx *acsl.Acsl_comment_contract
 
 	fc.StartPos, fc.EndPos = b.blockPositions(fcCtx)
 
-	fmt.Println("[ACSLBuilder] added FuncContract. Text:", ctx.GetText())
-	// fmt.Println("[ACSLBuilder] added FuncContract:", fc.FuncName, "Text:", ctx.GetText(), "comment_span:", b.blockSpan(ctx), "contract_span:", b.blockSpan(fcCtx))
-	// fmt.Println("contract_start:", fc.StartPos, "contract_end:", fc.EndPos)
-	// fmt.Println("block_start:", b.Block.Start, "block_end:", b.Block.End)
+	log.Debug("[ACSLBuilder] added FuncContract. Text:", ctx.GetText())
+	// log.Debug("[ACSLBuilder] added FuncContract:", fc.FuncName, "Text:", ctx.GetText(), "comment_span:", b.blockSpan(ctx), "contract_span:", b.blockSpan(fcCtx))
+	// log.Debug("contract_start:", fc.StartPos, "contract_end:", fc.EndPos)
+	// log.Debug("block_start:", b.Block.Start, "block_end:", b.Block.End)
 	return nil
 }
 
@@ -65,23 +65,23 @@ func (b *ACSLBuilder) VisitAcsl_comment_loop_annot(ctx *acsl.Acsl_comment_loop_a
 
 	b.Mod.LoopSpecs = append(b.Mod.LoopSpecs, ls)
 
-	fmt.Println("[ACSLBuilder] added LoopSpec in:", ls.ParentFuncName, "Text:", ctx.GetText())
+	log.Debug("[ACSLBuilder] added LoopSpec in:", ls.ParentFuncName, "Text:", ctx.GetText())
 	return nil
 }
 
 func (b *ACSLBuilder) VisitAcsl_comment_assertion(ctx *acsl.Acsl_comment_assertionContext) interface{} {
-	fmt.Println("[ACSLBuilder] assertion (stub)", "Text:", ctx.GetText())
+	log.Debug("[ACSLBuilder] assertion (stub)", "Text:", ctx.GetText())
 	return nil
 }
 
 func (b *ACSLBuilder) VisitAcsl_comment_statement_contract(ctx *acsl.Acsl_comment_statement_contractContext) interface{} {
-	fmt.Println("[ACSLBuilder] statement contract (stub)", "Text:", ctx.GetText())
+	log.Debug("[ACSLBuilder] statement contract (stub)", "Text:", ctx.GetText())
 	return nil
 }
 
 // Function contract: requires/ensures/assigns
 func (b *ACSLBuilder) VisitFunction_contract(ctx *acsl.Function_contractContext) interface{} {
-	fmt.Println("VisitFunction_contract text:", ctx.GetText())
+	log.Debug("VisitFunction_contract text:", ctx.GetText())
 	if b.currFunc == nil || ctx == nil {
 		return nil
 	}
@@ -103,7 +103,7 @@ func (b *ACSLBuilder) VisitFunction_contract(ctx *acsl.Function_contractContext)
 }
 
 func (b *ACSLBuilder) VisitSimple_clause(ctx *acsl.Simple_clauseContext) interface{} {
-	fmt.Println("VisitSimple_clause text:", ctx.GetText())
+	log.Debug("VisitSimple_clause text:", ctx.GetText())
 	if b.currFunc == nil || ctx == nil {
 		return nil
 	}
@@ -126,7 +126,7 @@ func (b *ACSLBuilder) VisitSimple_clause(ctx *acsl.Simple_clauseContext) interfa
 
 // requires_clause / ensures_clause -> NamedPredicate
 func (b *ACSLBuilder) VisitRequires_clause(ctx *acsl.Requires_clauseContext) interface{} {
-	fmt.Println("VisitRequires_clause text:", ctx.GetText())
+	log.Debug("VisitRequires_clause text:", ctx.GetText())
 	if ctx == nil {
 		return nil
 	}
@@ -134,7 +134,7 @@ func (b *ACSLBuilder) VisitRequires_clause(ctx *acsl.Requires_clauseContext) int
 }
 
 func (b *ACSLBuilder) VisitEnsures_clause(ctx *acsl.Ensures_clauseContext) interface{} {
-	fmt.Println("VisitEnsures_clause text:", ctx.GetText())
+	log.Debug("VisitEnsures_clause text:", ctx.GetText())
 	if ctx == nil {
 		return nil
 	}
@@ -142,7 +142,7 @@ func (b *ACSLBuilder) VisitEnsures_clause(ctx *acsl.Ensures_clauseContext) inter
 }
 
 func (b *ACSLBuilder) parseNamedPred(p acsl.IPredContext) specir.NamedPredicate {
-	fmt.Println("parseNamedPred text:", p.GetText())
+	log.Debug("parseNamedPred text:", p.GetText())
 	// default without label
 	np := specir.NamedPredicate{
 		Label: "",
@@ -172,7 +172,7 @@ func (b *ACSLBuilder) parseNamedPred(p acsl.IPredContext) specir.NamedPredicate 
 
 // assigns_clause -> LocationSet
 func (b *ACSLBuilder) VisitAssigns_clause(ctx *acsl.Assigns_clauseContext) interface{} {
-	fmt.Println("VisitAssigns_clause text:", ctx.GetText())
+	log.Debug("VisitAssigns_clause text:", ctx.GetText())
 	if ctx == nil {
 		return specir.LocationSet{Kind: specir.LocSetNothing}
 	}
@@ -231,7 +231,7 @@ func unique(xs []string) []string {
 
 // specir.Expr
 func (b *ACSLBuilder) predToExpr(p acsl.IPredContext) specir.Expr {
-	fmt.Printf("predToExpr text:%s, type:%T\n", p.GetText(), p)
+	log.Debugf("predToExpr text:%s, type:%T\n", p.GetText(), p)
 	if p == nil {
 		return nil
 	}
@@ -245,12 +245,12 @@ func (b *ACSLBuilder) predToExpr(p acsl.IPredContext) specir.Expr {
 		return np.Expr
 	}
 	// fallback
-	fmt.Println("predToExpr fallback")
+	log.Debug("predToExpr fallback")
 	return &specir.ExprVar{BaseExpr: specir.BaseExpr{Span: b.blockSpan(p)}, Name: p.GetText()}
 }
 
 func (b *ACSLBuilder) VisitLogical_true_pred(ctx *acsl.Logical_true_predContext) interface{} {
-	fmt.Println("VisitLogical_true_pred text:", ctx.GetText())
+	log.Debug("VisitLogical_true_pred text:", ctx.GetText())
 	return &specir.ExprLiteral{
 		BaseExpr: specir.BaseExpr{Span: b.blockSpan(ctx)},
 		Kind:     specir.LitBool,
@@ -259,7 +259,7 @@ func (b *ACSLBuilder) VisitLogical_true_pred(ctx *acsl.Logical_true_predContext)
 }
 
 func (b *ACSLBuilder) VisitLogical_false_pred(ctx *acsl.Logical_false_predContext) interface{} {
-	fmt.Println("VisitLogical_false_pred text:", ctx.GetText())
+	log.Debug("VisitLogical_false_pred text:", ctx.GetText())
 	return &specir.ExprLiteral{
 		BaseExpr: specir.BaseExpr{Span: b.blockSpan(ctx)},
 		Kind:     specir.LitBool,
@@ -269,7 +269,7 @@ func (b *ACSLBuilder) VisitLogical_false_pred(ctx *acsl.Logical_false_predContex
 
 // binary op
 func (b *ACSLBuilder) VisitBinary_op_term(ctx *acsl.Binary_op_termContext) interface{} {
-	fmt.Println("VisitBinary_op_term text:", ctx.GetText())
+	log.Debug("VisitBinary_op_term text:", ctx.GetText())
 	left := b.termToExpr(ctx.Term(0))
 	right := b.termToExpr(ctx.Term(1))
 
@@ -286,7 +286,7 @@ func (b *ACSLBuilder) VisitBinary_op_term(ctx *acsl.Binary_op_termContext) inter
 
 // a <= b, a == b, ...
 func (b *ACSLBuilder) VisitComparison_pred(ctx *acsl.Comparison_predContext) interface{} {
-	fmt.Println("VisitComparison_pred text:", ctx.GetText())
+	log.Debug("VisitComparison_pred text:", ctx.GetText())
 	//Term Rel_op Term
 	terms := ctx.AllTerm()
 	ops := ctx.AllRel_op()
@@ -296,7 +296,7 @@ func (b *ACSLBuilder) VisitComparison_pred(ctx *acsl.Comparison_predContext) int
 
 	left := b.termToExpr(terms[0])
 	right := b.termToExpr(terms[1])
-	fmt.Printf("VisitComparison_pred l: %T r: %T\n", terms[0], terms[1])
+	log.Debugf("VisitComparison_pred l: %T r: %T\n", terms[0], terms[1])
 	op := relOpToBinary(ops[0].GetText())
 	return &specir.ExprBinary{
 		BaseExpr: specir.BaseExpr{Span: b.blockSpan(ctx)},
@@ -327,7 +327,7 @@ func relOpToBinary(s string) specir.BinaryOp {
 
 // && / ||
 func (b *ACSLBuilder) VisitConjunction_pred(ctx *acsl.Conjunction_predContext) interface{} {
-	fmt.Println("VisitConjunction_pred text:", ctx.GetText())
+	log.Debug("VisitConjunction_pred text:", ctx.GetText())
 	ps := ctx.AllPred()
 	if len(ps) < 2 {
 		return b.predToExpr(ctx.Pred(0))
@@ -341,7 +341,7 @@ func (b *ACSLBuilder) VisitConjunction_pred(ctx *acsl.Conjunction_predContext) i
 }
 
 func (b *ACSLBuilder) VisitDisjunction_pred(ctx *acsl.Disjunction_predContext) interface{} {
-	fmt.Println("VisitDisjunction_pred text:", ctx.GetText())
+	log.Debug("VisitDisjunction_pred text:", ctx.GetText())
 	ps := ctx.AllPred()
 	if len(ps) < 2 {
 		return b.predToExpr(ctx.Pred(0))
@@ -356,7 +356,7 @@ func (b *ACSLBuilder) VisitDisjunction_pred(ctx *acsl.Disjunction_predContext) i
 
 // pred: cond ? p1 : p2
 func (b *ACSLBuilder) VisitTernary_condition_pred(ctx *acsl.Ternary_condition_predContext) interface{} {
-	fmt.Println("VisitTernary_condition_pred text:", ctx.GetText())
+	log.Debug("VisitTernary_condition_pred text:", ctx.GetText())
 	ps := ctx.AllPred()
 	if len(ps) != 3 {
 		return &specir.ExprVar{BaseExpr: specir.BaseExpr{Span: b.blockSpan(ctx)}, Name: ctx.GetText()}
@@ -375,7 +375,7 @@ func (b *ACSLBuilder) VisitTernary_condition_pred(ctx *acsl.Ternary_condition_pr
 
 // \old(pred)
 func (b *ACSLBuilder) VisitOld_pred(ctx *acsl.Old_predContext) interface{} {
-	fmt.Println("VisitOld_pred text:", ctx.GetText())
+	log.Debug("VisitOld_pred text:", ctx.GetText())
 	inner := b.predToExpr(ctx.Pred())
 	return &specir.ExprOld{
 		BaseExpr: specir.BaseExpr{Span: b.blockSpan(ctx)},
@@ -396,13 +396,13 @@ func (b *ACSLBuilder) termToExpr(t acsl.ITermContext) specir.Expr {
 }
 
 func (b *ACSLBuilder) VisitInternal_term(ctx *acsl.Internal_termContext) interface{} {
-	fmt.Println("VisitInternal_term text:", ctx.GetText())
+	log.Debug("VisitInternal_term text:", ctx.GetText())
 	// "id" / literal / ...
 	return b.VisitChildren(ctx)
 }
 
 func (b *ACSLBuilder) VisitFunc_application_term(ctx *acsl.Func_application_termContext) interface{} {
-	fmt.Println("VisitFunc_application_term text:", ctx.GetText())
+	log.Debug("VisitFunc_application_term text:", ctx.GetText())
 	// term ::= ident '(' term (',' term)* ')'
 	name := ""
 	// if ctx.Id() != nil {
@@ -421,7 +421,7 @@ func (b *ACSLBuilder) VisitFunc_application_term(ctx *acsl.Func_application_term
 }
 
 func (b *ACSLBuilder) VisitOld_term(ctx *acsl.Old_termContext) interface{} {
-	fmt.Println("VisitOld_term text:", ctx.GetText())
+	log.Debug("VisitOld_term text:", ctx.GetText())
 	inner := b.termToExpr(ctx.Term())
 	return &specir.ExprOld{
 		BaseExpr: specir.BaseExpr{Span: b.blockSpan(ctx)},
@@ -430,17 +430,17 @@ func (b *ACSLBuilder) VisitOld_term(ctx *acsl.Old_termContext) interface{} {
 }
 
 func (b *ACSLBuilder) VisitResult_term(ctx *acsl.Result_termContext) interface{} {
-	fmt.Println("VisitResult_term text:", ctx.GetText())
+	log.Debug("VisitResult_term text:", ctx.GetText())
 	return &specir.ExprResult{BaseExpr: specir.BaseExpr{Span: b.blockSpan(ctx)}}
 }
 
 func (b *ACSLBuilder) VisitParentheses_pred(ctx *acsl.Parentheses_predContext) interface{} {
-	fmt.Println("VisitParentheses_pred text:", ctx.GetText())
+	log.Debug("VisitParentheses_pred text:", ctx.GetText())
 	return b.predToExpr(ctx.Pred())
 }
 
 func (b *ACSLBuilder) VisitUnary_op_term(ctx *acsl.Unary_op_termContext) interface{} {
-	fmt.Printf("VisitUnary_op_term text:%s, type:%T\n", ctx.GetText(), ctx.Term())
+	log.Debugf("VisitUnary_op_term text:%s, type:%T\n", ctx.GetText(), ctx.Term())
 	opCtx := ctx.Unary_op()
 	inner := b.termToExpr(ctx.Term())
 
@@ -478,7 +478,7 @@ func (b *ACSLBuilder) VisitLiteral_term(ctx *grammar.Literal_termContext) interf
 
 	lit := ctx.Literal()
 
-	fmt.Printf("VisitLiteral_term text:%s, type:%T\n", ctx.GetText(), lit)
+	log.Debugf("VisitLiteral_term text:%s, type:%T\n", ctx.GetText(), lit)
 	if lit == nil {
 		// fallback
 		return &specir.ExprVar{

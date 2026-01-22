@@ -49,7 +49,7 @@ func (b *ACSLBuilder) blockSpan(ctx antlr.ParserRuleContext) specir.Span {
 		return fallback
 	}
 
-	// CommonToken.GetStart/GetStop - offsets inside of spec block 
+	// CommonToken.GetStart/GetStop - offsets inside of spec block
 	localStart := st.GetStart()
 	localStop := en.GetStop()
 
@@ -117,7 +117,7 @@ func addLine(baseLine int, localLine int) int {
 
 // addColumn ANTLR column is 0-based
 func addColumn(baseLine int, baseColumn int, localLine int, localColumn int) int {
-    localColumn += 1 // bacause ANTLR column 0-based.
+	localColumn += 1 // bacause ANTLR column 0-based.
 	if localLine <= 1 {
 		return baseColumn + localColumn
 	}
@@ -132,13 +132,11 @@ func tokenTextLenApprox(tok *antlr.CommonToken) int {
 	return len([]rune(txt))
 }
 
-
-
 func (b *ACSLBuilder) BuildFromAcslComment(tree acsl.IAcsl_commentContext) error {
 	// if _, ok := any(b).(acsl.ACSLVisitor); !ok {
-	// 	fmt.Println("ACSLBuilder DOES NOT implement acsl.ACSLVisitor")
+	// 	log.Debug("ACSLBuilder DOES NOT implement acsl.ACSLVisitor")
 	// } else {
-	// 	fmt.Println("ACSLBuilder implements acsl.ACSLVisitor")
+	// 	log.Debug("ACSLBuilder implements acsl.ACSLVisitor")
 	// }
 	_ = b.Visit(tree.(antlr.ParseTree))
 	return nil

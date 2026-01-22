@@ -12,12 +12,14 @@ import (
 	"github.com/antlr4-go/antlr/v4"
 
 	acsl "gpma/framework/gosl/front/generated/grammar/acsl"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func buildSpecModuleACSL_ANTLR(spec *specir.SpecModule, blocks []RawSpecBlock) (*specir.SpecModule, error) {
 	for i, v := range blocks {
-		// fmt.Println("i=", i, "block:", v.Text, "Start:", v.Start, "End:", v.End)
-		fmt.Println("---------- Build SpecModule ----------")
+		// log.Debug("i=", i, "block:", v.Text, "Start:", v.Start, "End:", v.End)
+		log.Debug("---------- Build SpecModule ----------")
 
 		is := antlr.NewInputStream(v.Text)
 		lexer := acsl.NewACSLLexer(is)
@@ -28,16 +30,16 @@ func buildSpecModuleACSL_ANTLR(spec *specir.SpecModule, blocks []RawSpecBlock) (
 		tree := parser.Acsl_comment()
 		jsonStr, _ := DumpTreeAsJSON(parser, tokens, tree.(antlr.Tree))
 		path, _ := writeJSONForBlock("acsl_trees", v, jsonStr, i)
-		fmt.Println("ACSL ast wrote:", path)
+		log.Debug("ACSL ast wrote:", path)
 
 		builder := newACSLBuilder(spec, v) // v = RawSpecBlock
 		if err := builder.BuildFromAcslComment(tree); err != nil {
-			fmt.Println("Finshed building spec from block:", i)
+			log.Debug("Finshed building spec from block:", i)
 		}
 
 		b, _ := json.MarshalIndent(spec, "", "  ")
 		path, _ = writeSpecModuleJSON("acsl_trees", string(b), "spec_"+strconv.Itoa(i))
-		fmt.Println("Spec wrote: ", path)
+		log.Debug("Spec wrote: ", path)
 	}
 	b, _ := json.MarshalIndent(spec, "", "  ")
 	_, _ = writeSpecModuleJSON("acsl_trees", string(b), "spec_final")
