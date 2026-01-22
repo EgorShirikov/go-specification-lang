@@ -1,9 +1,11 @@
 package notation
 
 /*@
-assigns a, b;
-ensures (a == \old(b)) && (b == \old(a));
+assigns p, q;
+ensures (*p == \old(*q)) && (*q == \old(*p));
 */
-func swap(a, b int) (int, int) {
-	return b, a
+func swap(p *int, q *int) {
+	save := *p;
+	*p = *q;
+	*q = save;
 }
