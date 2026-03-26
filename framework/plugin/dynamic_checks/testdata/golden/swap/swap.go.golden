@@ -1,0 +1,17 @@
+package notation
+
+import checks "gpma/framework/plugin/dynamic_checks/check"
+
+/*
+@
+assigns p, q;
+ensures (*p == \old(*q)) && (*q == \old(*p));
+*/
+func swap(p *int, q *int) {
+	__old_1 := *q
+	__old_2 := *p
+	defer checks.Check(*p == __old_1 && *q == __old_2, "postcondition")
+	save := *p
+	*p = *q
+	*q = save
+}

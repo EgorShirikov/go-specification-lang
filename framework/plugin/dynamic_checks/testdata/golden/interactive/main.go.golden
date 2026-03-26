@@ -1,0 +1,45 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	checks "gpma/framework/plugin/dynamic_checks/check"
+	"os"
+	"strconv"
+)
+
+/*
+@
+requires num >= 0.0;
+ensures num >= 2.0;
+assigns \nothing;
+*/
+func foo(num float64) float64 {
+	checks.Check(num >= 0.000000, "precondition")
+	__old_1 := num
+	var __result float64
+	defer checks.Check(num >= 2.000000, "postcondition")
+	fmt.Printf("Positive number is: %v\n", num)
+	num++
+	checks.Check(__old_1 == (num-1), "assertion")
+	{
+		__result = num
+		return __result
+	}
+}
+
+func main() {
+	scanner := bufio.NewScanner(os.Stdin)
+
+	fmt.Print("Enter positive number: ")
+	scanner.Scan()
+
+	input := scanner.Text()
+	num, err := strconv.ParseFloat(input, 64)
+	if err != nil {
+		fmt.Printf("Error: '%s' is not number\n", input)
+		os.Exit(1)
+	}
+
+	foo(num)
+}

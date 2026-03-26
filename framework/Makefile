@@ -23,7 +23,7 @@ clean:
 
 test:
 	@echo "Running tests..."
-	@go test -v ./parser/... ./plugin/... ./data/... ./codegen/...
+	@go test -v ./...
 
 run: build
 	@./build/framework

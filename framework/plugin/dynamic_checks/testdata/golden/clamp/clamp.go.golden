@@ -1,0 +1,19 @@
+package clamp
+
+import checks "gpma/framework/plugin/dynamic_checks/check"
+
+func clamp(x int, min int, max int) int {
+	checks.Check(min <= max, "assertion")
+
+	if x < min {
+		return min
+	}
+	checks.Check(x >= min, "assertion")
+
+	if x > max {
+		return max
+	}
+	checks.Check(x >= min && x <= max, "assertion")
+
+	return x
+}

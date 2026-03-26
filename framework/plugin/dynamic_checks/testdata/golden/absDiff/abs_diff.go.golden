@@ -1,0 +1,23 @@
+package absdiff
+
+import checks "gpma/framework/plugin/dynamic_checks/check"
+
+/*
+@
+ensures \result >= 0;
+*/
+func absDiff(a, b int) int {
+	var __result int
+	defer checks.Check(__result >= 0, "postcondition")
+	d := a - b
+	checks.Check(d >= 0 || -d >= 0, "assertion")
+
+	if d < 0 {
+		d = -d
+	}
+	checks.Check(d >= 0, "assertion")
+	{
+		__result = d
+		return __result
+	}
+}

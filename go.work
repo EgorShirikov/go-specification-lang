@@ -2,10 +2,4 @@ go 1.25.2
 
 use (
 	./framework
-	./samples/projects/abs
-	./samples/projects/interactive
-	./samples/projects/may_negate
-	./samples/projects/min
-	./samples/projects/swap
-	./samples/projects/simple
 )
