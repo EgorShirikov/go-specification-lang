@@ -158,4 +158,3 @@ func writeJSONForBlock(outDir string, block RawSpecBlock, jsonStr string, idx in
 	}
 	return path, nil
 }
-
