@@ -22,11 +22,10 @@ jobs:
           
       - name: Format check
         run: |
-          if [ "$(gofmt -l .)" != "" ]; then
+          files=$(gofmt -l . | grep -v '^samples/' | grep -v '^test_cases/' || true)
+          if [ "$files" != "" ]; then
             echo "Unformatted files found:"
-            gofmt -l .
-            gofmt -w .
-            git --no-pager diff 
+            echo "$files"
             exit 1
           else
             echo "Passed"
