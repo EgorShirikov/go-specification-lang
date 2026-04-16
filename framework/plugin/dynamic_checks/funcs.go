@@ -58,7 +58,7 @@ func applyContractToFunc(funcDecl *ast.FuncDecl, contract *specir.FuncContract, 
 
 		if strictMode {
 			newStmts = append(newStmts, &ast.ExprStmt{
-				X: createCheckCall(condition, "precondition", req.Label),
+				X: createCheckCall(condition, "precondition", req.Label, req.StartPos),
 			})
 		} else {
 			// if !condition { __preconditions_passed = false }
@@ -86,18 +86,28 @@ func applyContractToFunc(funcDecl *ast.FuncDecl, contract *specir.FuncContract, 
 		oldInfo.isDeclared = true
 	}
 
+	// Determine return value metadata.
+	// We inject result variables only when there are ensures clauses.
 	hasEnsures := len(contract.Ensures) > 0
-	hasResultVar := hasEnsures &&
-		funcDecl.Type.Results != nil &&
-		len(funcDecl.Type.Results.List) == 1
+	var resultInfos []resultInfo
+	if hasEnsures && funcDecl.Type.Results != nil {
+		resultInfos = collectResultInfos(funcDecl)
+	}
+	hasResultVars := len(resultInfos) > 0
 
-	if hasResultVar {
-		newStmts = append(newStmts, createResultDeclaration(funcDecl))
+	// Let the converter resolve \result / \result_N to the correct variable names
+	// (named return values use their source names; unnamed use __result_N).
+	if hasResultVars {
+		conv.SetResultInfos(resultInfos)
+	}
+
+	if hasResultVars {
+		newStmts = append(newStmts, createResultDeclarations(resultInfos)...)
 	}
 
 	for _, ens := range contract.Ensures {
 		condition := conv.Convert(ens.Expr)
-		checkCall := createCheckCall(condition, "postcondition", ens.Label)
+		checkCall := createCheckCall(condition, "postcondition", ens.Label, ens.StartPos)
 
 		if strictMode || !hasRequires {
 			newStmts = append(newStmts, &ast.DeferStmt{Call: checkCall})
@@ -128,8 +138,8 @@ func applyContractToFunc(funcDecl *ast.FuncDecl, contract *specir.FuncContract, 
 
 	funcDecl.Body.List = append(newStmts, funcDecl.Body.List...)
 
-	if hasResultVar {
-		replaceReturnsInBlock(funcDecl.Body)
+	if hasResultVars {
+		replaceReturnsInBlock(funcDecl.Body, resultInfos)
 	}
 
 	return true

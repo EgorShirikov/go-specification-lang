@@ -25,9 +25,10 @@ func (c *baseConverter) Convert(expr specir.Expr) ast.Expr {
 // Extends baseConverter with support for \old and \result.
 // Use for requires and ensures clauses.
 type contractConverter struct {
-	oldVars  map[specir.Expr]*oldVarInfo
-	oldOrder []specir.Expr
-	counter  int
+	oldVars     map[specir.Expr]*oldVarInfo
+	oldOrder    []specir.Expr
+	counter     int
+	resultInfos []resultInfo // nil means use __result_N fallback
 }
 
 type oldVarInfo struct {
@@ -43,12 +44,21 @@ func newContractConverter() *contractConverter {
 	}
 }
 
+func (c *contractConverter) SetResultInfos(infos []resultInfo) {
+	c.resultInfos = infos
+}
+
 func (c *contractConverter) Convert(expr specir.Expr) ast.Expr {
 	switch e := expr.(type) {
 	case *specir.ExprOld:
 		return c.convertOld(e)
 	case *specir.ExprResult:
-		return &ast.Ident{Name: "__result"}
+		// If we have resultInfos (named or unnamed), use the resolved name.
+		if c.resultInfos != nil && e.Index >= 0 && e.Index < len(c.resultInfos) {
+			return &ast.Ident{Name: c.resultInfos[e.Index].name}
+		}
+		// Fallback: generate __result_N.
+		return &ast.Ident{Name: fmt.Sprintf("__result_%d", e.Index)}
 	default:
 		return convertExpr(c, expr)
 	}
@@ -116,7 +126,7 @@ func convertExpr(conv exprConverter, expr specir.Expr) ast.Expr {
 	case *specir.ExprOld:
 		panic(`\old is not valid in this context (only allowed in ensures)`)
 	case *specir.ExprResult:
-		panic(`\result is not valid in this context (only allowed in ensures)`)
+		panic(`\result / \result_N is not valid in this context (only allowed in ensures)`)
 	default:
 		panic(fmt.Sprintf("unsupported expression type: %T", expr))
 	}
