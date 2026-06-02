@@ -36,6 +36,8 @@ func (p *GobraPlugin) Process(astData *data.ASTData) *plugin.PluginResult {
 	failed_predicates, err := RunGobraVerifier(astData, p.config)
 	if err != nil {
 		result.WithError(err)
+		fmt.Printf("Verification error: %v\n", err)
+		return result
 	}
 
 	if len(failed_predicates) > 0 {

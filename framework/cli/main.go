@@ -29,7 +29,7 @@ func main() {
 			{
 				Name:      "file",
 				Usage:     "Process a single Go file",
-				ArgsUsage: "<source-file> <output-file>",
+				ArgsUsage: "<source-file> [output-file]",
 				Flags: []cli.Flag{
 					&cli.StringSliceFlag{
 						Name:    "plugin",
@@ -162,12 +162,15 @@ func convertStringToInterface(s string) interface{} {
 }
 
 func processFile(c *cli.Context) error {
-	if c.NArg() < 2 {
-		return cli.Exit("Usage: framework file <source-file> <output-file> --plugin <plugin-name> [--plugin <plugin-name>...]", 1)
+	if c.NArg() < 1 {
+		return cli.Exit("Usage: framework file <source-file> [output-file] --plugin <plugin-name> [--plugin <plugin-name>...]", 1)
 	}
 
 	sourceFile := c.Args().Get(0)
-	outputFile := c.Args().Get(1)
+	var outputFile string
+	if c.NArg() >= 2 {
+		outputFile = c.Args().Get(1)
+	}
 	pluginNames := c.StringSlice("plugin")
 	configStrings := c.StringSlice("plugin-config")
 
@@ -224,24 +227,25 @@ func processFile(c *cli.Context) error {
 	}
 
 	if result.Modified {
-		fmt.Println("Generated code:")
-		out, err := os.Create(outputFile)
-		if err != nil {
-			return cli.Exit(fmt.Sprintf("Failed to create output file: %v", err), 1)
+		if outputFile != "" {
+			fmt.Println("Generated code:")
+			out, err := os.Create(outputFile)
+			if err != nil {
+				return cli.Exit(fmt.Sprintf("Failed to create output file: %v", err), 1)
+			}
+			defer out.Close()
+			fmt.Fprintln(out, result.GeneratedCode)
+			fmt.Printf("Output written to: %s\n", outputFile)
+		} else {
+			fmt.Println("Generated code:")
+			fmt.Println(result.GeneratedCode)
 		}
-		defer out.Close()
-		fmt.Fprintln(out, result.GeneratedCode)
-		fmt.Printf("Output written to: %s\n", outputFile)
 	} else {
-		content, err := os.ReadFile(sourceFile)
-		if err != nil {
-			return cli.Exit(fmt.Sprintf("Failed to read source file: %v", err), 1)
+		if outputFile != "" {
+			fmt.Println("No modifications were made, output file not created")
+		} else {
+			fmt.Println("No modifications were made")
 		}
-		if err := os.WriteFile(outputFile, content, 0644); err != nil {
-			return cli.Exit(fmt.Sprintf("Failed to create output file: %v", err), 1)
-		}
-		fmt.Println("No modifications were made, output file created with original content")
-		fmt.Printf("Output written to: %s\n", outputFile)
 	}
 
 	return nil
