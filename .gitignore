@@ -12,3 +12,5 @@ packaging/cache/
 .vscode
 *generated*
 overlays/*
+
+.codeassistant
