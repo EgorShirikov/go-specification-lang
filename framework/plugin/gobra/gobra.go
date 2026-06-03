@@ -235,7 +235,6 @@ func FindNamedPredicateByStartOffset(data *data.ASTData, offset int) *specir.Nam
 	return nil
 }
 
-
 func RunGobraVerifier(astData *data.ASTData, cfg GobraConfig) ([]specir.NamedPredicate, error) {
 	generated, err := GenerateGobra(astData)
 	if err != nil {
@@ -249,7 +248,7 @@ func RunGobraVerifier(astData *data.ASTData, cfg GobraConfig) ([]specir.NamedPre
 	defer os.Remove(tmpFile)
 
 	gobraReport, err := RunGobra(tmpFile, cfg)
-	if err != nil {
+	if err != nil && gobraReport == "" {
 		return nil, fmt.Errorf("failed to get gobra report: %v", err)
 	}
 
