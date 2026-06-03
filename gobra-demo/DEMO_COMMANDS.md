@@ -1,4 +1,4 @@
-# Gobra Plugin Demo - Command List
+# Gobra Plugin gobra-demo - Command List
 
 ## Setup Commands
 
@@ -11,7 +11,7 @@ cd framework && make build
 
 ```bash
 # Verify all functions with correct contracts
-cd framework && ./build/framework file --plugin gobra --plugin-config gobra:backend:docker ../demo/success/contracts.go
+cd framework && ./build/framework file --plugin gobra --plugin-config gobra:backend:docker ../gobra-demo/success/contracts.go
 ```
 
 **Expected Result:** `Verification succeed`
@@ -20,7 +20,7 @@ cd framework && ./build/framework file --plugin gobra --plugin-config gobra:back
 
 ```bash
 # Verify all functions with correct assertions
-cd framework && ./build/framework file --plugin gobra --plugin-config gobra:backend:docker ../demo/success/asserts.go
+cd framework && ./build/framework file --plugin gobra --plugin-config gobra:backend:docker ../gobra-demo/success/asserts.go
 ```
 
 **Expected Result:** `Verification succeed`
@@ -29,7 +29,7 @@ cd framework && ./build/framework file --plugin gobra --plugin-config gobra:back
 
 ```bash
 # Verify functions with incorrect assertions (should fail)
-cd framework && ./build/framework file --plugin gobra --plugin-config gobra:backend:docker ../demo/failure/asserts.go
+cd framework && ./build/framework file --plugin gobra --plugin-config gobra:backend:docker ../gobra-demo/failure/asserts.go
 ```
 
 **Expected Result:**
