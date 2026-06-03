@@ -7,7 +7,7 @@
 #   docker run --rm gpma:latest plugins
 
 # ---- build deb -----------------------------------------------------------
-FROM golang:1.25-bookworm AS deb-builder
+FROM --platform=linux/amd64 golang:1.25-trixie AS deb-builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
@@ -31,7 +31,7 @@ RUN chmod +x packaging/scripts/*.sh packaging/debian/* packaging/files/gobra-wra
     && packaging/scripts/build-deb.sh
 
 # ---- runtime -------------------------------------------------------------
-FROM ubuntu:22.04 AS runtime
+FROM --platform=linux/amd64 ubuntu:22.04 AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 
