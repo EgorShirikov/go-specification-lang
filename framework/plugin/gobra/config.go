@@ -7,13 +7,13 @@ import (
 )
 
 const (
-	defaultJava       = "java"
-	defaultJavaOpts   = "-Xss128m"
-	defaultDockerImg  = "ghcr.io/viperproject/gobra:sha-7fa4f86"
-	defaultGobraJar   = "/usr/lib/gpma/gobra/gobra.jar"
-	defaultZ3Exe      = "/usr/lib/gpma/bin/z3"
-	defaultBoogieExe  = "/usr/lib/gpma/bin/Boogie"
-	defaultLibPath    = "/usr/lib/gpma/lib"
+	defaultJava      = "java"
+	defaultJavaOpts  = "-Xss128m"
+	defaultDockerImg = "ghcr.io/viperproject/gobra:sha-7fa4f86"
+	defaultGobraJar  = "/usr/lib/gpma/gobra/gobra.jar"
+	defaultZ3Exe     = "/usr/lib/gpma/bin/z3"
+	defaultBoogieExe = "/usr/lib/gpma/bin/Boogie"
+	defaultLibPath   = "/usr/lib/gpma/lib"
 )
 
 // Backend selects how Gobra is invoked.
@@ -33,6 +33,7 @@ type GobraConfig struct {
 	Z3Exe       string
 	BoogieExe   string
 	DockerImage string
+	Debug       bool
 }
 
 // DefaultConfig returns configuration resolved from environment variables with
@@ -125,6 +126,13 @@ func (c *GobraConfig) ApplyPluginParams(params map[string]interface{}) error {
 			c.DockerImage = s
 		} else {
 			return fmt.Errorf("docker_image: must be a string")
+		}
+	}
+	if val, ok := params["debug"]; ok {
+		if b, ok := val.(bool); ok {
+			c.Debug = b
+		} else {
+			return fmt.Errorf("debug: must be a boolean")
 		}
 	}
 	return nil

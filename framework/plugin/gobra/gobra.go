@@ -241,6 +241,16 @@ func RunGobraVerifier(astData *data.ASTData, cfg GobraConfig) ([]specir.NamedPre
 		return nil, fmt.Errorf("failed to generate gobra: %v", err)
 	}
 
+	// Dump generated Gobra code to file for debugging
+	if cfg.Debug {
+		debugFile := "debug.gobra"
+		if err := os.WriteFile(debugFile, []byte(generated.GetGobraSource()), 0644); err != nil {
+			fmt.Printf("[DEBUG] Warning: failed to write debug.gobra: %v\n", err)
+		} else {
+			fmt.Printf("[DEBUG] Generated Gobra code written to %s\n", debugFile)
+		}
+	}
+
 	tmpFile, err := WriteTempFile(generated.GetGobraSource())
 	if err != nil {
 		return nil, fmt.Errorf("failed to write to /tmp: %v", err)
@@ -259,13 +269,36 @@ func RunGobraVerifier(astData *data.ASTData, cfg GobraConfig) ([]specir.NamedPre
 			return nil, fmt.Errorf("failed to get error offset: %v", err)
 		}
 
+		// Debug logging
+		if cfg.Debug {
+			gobraLine, gobraCol, _ := OffsetToLineCol(generated.GetGobraSource(), gobraOffset)
+			fmt.Printf("[DEBUG] Gobra error at generated position %d:%d (offset %d)\n", gobraLine, gobraCol, gobraOffset)
+			fmt.Printf("[DEBUG] Generated source snippet around error:\n%s\n", getSnippet(generated.GetGobraSource(), gobraOffset, 50))
+
+			// Show available predicate offsets
+			availableOffsets := make([]int, 0, len(generated.predicateSpansMap))
+			for offset := range generated.predicateSpansMap {
+				availableOffsets = append(availableOffsets, offset)
+			}
+			fmt.Printf("[DEBUG] Available predicate offsets in generated code: %v\n", availableOffsets)
+		}
+
 		sourceOffset, found := generated.predicateSpansMap[gobraOffset]
 		if !found {
-			line, col, err := OffsetToLineCol(astData.Source, sourceOffset.Start)
+			// Provide useful debugging information instead of misleading error
+			gobraLine, gobraCol, err := OffsetToLineCol(generated.GetGobraSource(), gobraOffset)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get error coords: %v", err)
+				return nil, fmt.Errorf("failed to get gobra error position: %v", err)
 			}
-			return nil, fmt.Errorf("failed to find corresponding predicate offset: %d:%d", line, col)
+
+			// Show what's in the map for debugging
+			availableOffsets := make([]int, 0, len(generated.predicateSpansMap))
+			for offset := range generated.predicateSpansMap {
+				availableOffsets = append(availableOffsets, offset)
+			}
+
+			return nil, fmt.Errorf("failed to find corresponding predicate for gobra position %d:%d (offset %d). Available offsets: %v",
+				gobraLine, gobraCol, gobraOffset, availableOffsets)
 		}
 
 		predicate := FindNamedPredicateByStartOffset(astData, sourceOffset.Start)
@@ -277,4 +310,32 @@ func RunGobraVerifier(astData *data.ASTData, cfg GobraConfig) ([]specir.NamedPre
 	}
 
 	return failed_predicates, nil
+}
+
+// getSnippet returns a snippet of text around the given offset for debugging purposes.
+// The snippet includes up to `contextSize` characters before and after the offset.
+func getSnippet(text string, offset int, contextSize int) string {
+	if offset < 0 || offset > len(text) {
+		return "<invalid offset>"
+	}
+
+	start := offset - contextSize
+	if start < 0 {
+		start = 0
+	}
+
+	end := offset + contextSize
+	if end > len(text) {
+		end = len(text)
+	}
+
+	snippet := text[start:end]
+
+	// Add a marker to show where the offset is
+	markerPos := offset - start
+	if markerPos >= 0 && markerPos <= len(snippet) {
+		return snippet[:markerPos] + ">>>HERE<<<" + snippet[markerPos:]
+	}
+
+	return snippet
 }
