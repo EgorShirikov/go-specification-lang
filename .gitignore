@@ -1,5 +1,6 @@
 acsl_trees
 /build*
+*/build/*
 bin/
 vendor/
 *.log
