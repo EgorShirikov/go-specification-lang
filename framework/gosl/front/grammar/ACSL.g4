@@ -22,6 +22,7 @@ import C;
 // own additions --- start
 @lexer::members {
   var skipCommentSymbols bool;
+  var inAcslLineComment bool;
 }
 // own additions --- end
 
@@ -178,10 +179,51 @@ variable_ident
     | '(' variable_ident ')'
     ;
 
-// fn_behavior.tex
-function_contract
-    : requires_clause* terminates_clause? decreases_clause? simple_clause* named_behavior* completeness_clause*
+// logic specifications
+clause_kind
+    : 'check'
+    | 'admit'
     ;
+
+logic_def 
+    : logic_predicate_def
+    | logic_function_def
+    | lemma_def
+    ;
+
+logic_predicate_def
+    : 'predicate' poly_id parameters? '=' pred ';'
+    ;
+
+logic_function_def
+    : 'logic' poly_id parameters type_expr '=' term ';'
+    ;
+
+lemma_def
+    : clause_kind? 'lemma' poly_id ':' pred ';'
+    ;
+
+parameters
+    : '(' parameter (',' parameter)* ')'
+    ;
+
+parameter
+    : variable_ident (',' variable_ident)* type_expr
+    ;
+
+// fn_behavior.tex
+//function_contract
+//    : requires_clause* terminates_clause? decreases_clause? simple_clause* named_behavior* completeness_clause*
+//    ;
+function_contract
+    : requires_clause+ terminates_clause? decreases_clause? simple_clause* named_behavior* completeness_clause*
+    | requires_clause* terminates_clause decreases_clause? simple_clause* named_behavior* completeness_clause*
+    | requires_clause* terminates_clause? decreases_clause simple_clause* named_behavior* completeness_clause*
+    | requires_clause* terminates_clause? decreases_clause? simple_clause+ named_behavior* completeness_clause*
+    | requires_clause* terminates_clause? decreases_clause? simple_clause* named_behavior+ completeness_clause*
+    | requires_clause* terminates_clause? decreases_clause? simple_clause* named_behavior* completeness_clause+
+    ;
+
 
 requires_clause
     : 'requires' pred ';'
@@ -357,8 +399,8 @@ c_statement
 //     | '/*@' 'for' id (',' id)* ':' 'assert' pred ';' '*/'
 //     ;
 assertion
-    : AcslCommentStart Newline* 'assert' pred ';' AcslCommentEnd
-    | AcslCommentStart Newline* 'for' id (',' id)* ':' 'assert' pred ';' AcslCommentEnd
+    : AcslCommentStart Newline* 'assert' pred ';' acsl_comment_end
+    | AcslCommentStart Newline* 'for' id (',' id)* ':' 'assert' pred ';' acsl_comment_end
     ;
 
 
@@ -429,9 +471,15 @@ label_id
     ;
 
 // loops.tex
+//loop_annot
+//    : loop_clause* loop_behavior* loop_variant?
+//    ;
 loop_annot
-    : loop_clause* loop_behavior* loop_variant?
+    : loop_clause+ loop_behavior* loop_variant?
+    | loop_clause* loop_behavior+ loop_variant?
+    | loop_clause* loop_behavior* loop_variant
     ;
+
 
 loop_clause
     : loop_invariant | loop_assigns | loop_allocation
@@ -455,8 +503,19 @@ loop_variant
     ;
 
 // st_contracts.tex
+//statement_contract
+//    : ('for' id (',' id)* ':')? requires_clause* simple_clause_stmt* named_behavior_stmt* completeness_clause*
+//    ;
+
 statement_contract
-    : ('for' id (',' id)* ':')? requires_clause* simple_clause_stmt* named_behavior_stmt* completeness_clause*
+    : ('for' id (',' id)* ':')? statement_contract_body
+    ;
+
+statement_contract_body
+    : requires_clause+ simple_clause_stmt* named_behavior_stmt* completeness_clause*
+    | requires_clause* simple_clause_stmt+ named_behavior_stmt* completeness_clause*
+    | requires_clause* simple_clause_stmt* named_behavior_stmt+ completeness_clause*
+    | requires_clause* simple_clause_stmt* named_behavior_stmt* completeness_clause+
     ;
 
 simple_clause_stmt
@@ -471,25 +530,38 @@ behavior_body_stmt
     : assumes_clause* requires_clause* simple_clause_stmt*
     ;
 
-// own additions --- start
 // AcslCommentStart
-//     : '/*@' {skipCommentSymbols = true;}
-//     ;
+//    : '/*' ( '@' | ('\r'? '\n') [ \t]* '@' ) {skipCommentSymbols = true;}
+//    ;
 
 AcslCommentStart
     : '/*' ( '@' | ('\r'? '\n') [ \t]* '@' ) {skipCommentSymbols = true;}
+    | '//@' {inAcslLineComment = true;}
     ;
 
 
+// AcslCommentEnd
+//    : '*/' {skipCommentSymbols = false;}
+//    ;
 
 AcslCommentEnd
     : '*/' {skipCommentSymbols = false;}
+    | {inAcslLineComment}? ('\r'? '\n' | '\r') {inAcslLineComment = false;}
     ;
 
 AcslCommentIntermediate
     : '@' { if skipCommentSymbols {
 				l.Skip()
 			 }  }
+    ;
+
+acsl_comment_end
+    : AcslCommentEnd
+    | EOF
+    ;
+
+acsl_comment_logic_defs
+    : AcslCommentStart Newline* logic_def+ AcslCommentEnd Newline*
     ;
 
 acsl_comment_contract
@@ -509,9 +581,10 @@ acsl_comment_statement_contract
     ;
 
 acsl_comment
-    : acsl_comment_contract
+    : acsl_comment_logic_defs
     | acsl_comment_assertion
     | acsl_comment_loop_annot
+    | acsl_comment_contract
     | acsl_comment_statement_contract
     ;
 // own additions --- end
