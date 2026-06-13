@@ -186,7 +186,7 @@ func prependLibPath(existing string) string {
 // WriteTempFile writes content to a newly created temporary file and returns
 // its path. The caller is responsible for removing the file when done.
 func WriteTempFile(content string) (string, error) {
-	f, err := os.CreateTemp("", "gpma-*.txt")
+	f, err := os.CreateTemp(".", "gpma-*.gobra")
 	if err != nil {
 		return "", fmt.Errorf("create temp file: %w", err)
 	}
