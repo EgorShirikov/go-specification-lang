@@ -48,6 +48,19 @@ Verification failed
 cd framework && ./build/framework file --plugin gobra --plugin-config gobra:backend:docker ../gobra-demo/failure/ensures.go
 ```
 
+## ErrorReporter Examples
+
+```bash
+# JSON format to file
+cd framework && ./build/framework file --plugin gobra --plugin-config gobra:backend:docker --error-format json --error-output /tmp/errors.json ../gobra-demo/failure/asserts.go
+
+# VSCode format to stderr
+cd framework && ./build/framework file --plugin gobra --plugin-config gobra:backend:docker --error-format vscode --error-output stderr ../gobra-demo/failure/asserts.go
+
+# Compact format to stdout
+cd framework && ./build/framework file --plugin gobra --plugin-config gobra:backend:docker --error-format compact ../gobra-demo/failure/asserts.go
+```
+
 **Expected Result:**
 ```
 Verification failed

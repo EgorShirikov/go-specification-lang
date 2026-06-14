@@ -10,7 +10,7 @@ import (
 
 	"gpma/framework"
 	"gpma/framework/errors"
-	"gpma/framework/errors/formats"
+	_ "gpma/framework/errors/formatter_factory" // Import to trigger formatter factory registration
 	"gpma/framework/plugin"
 	_ "gpma/framework/plugin/dynamic_checks"
 	_ "gpma/framework/plugin/examples"
@@ -43,6 +43,22 @@ func main() {
 						Aliases: []string{"c"},
 						Usage:   "Plugin configuration in format 'plugin:key:value;key:value' (can be specified multiple times)",
 					},
+					&cli.StringFlag{
+						Name:    "error-format",
+						Aliases: []string{"ef"},
+						Usage:   "Error output format: text, json, compact, vscode",
+						Value:   "text",
+					},
+					&cli.StringFlag{
+						Name:    "error-output",
+						Aliases: []string{"eo"},
+						Usage:   "Error output destination: stdout, stderr, or file path",
+						Value:   "stdout",
+					},
+					&cli.BoolFlag{
+						Name:  "error-append",
+						Usage: "Append to error output file instead of truncating",
+					},
 				},
 				Action: processFile,
 			},
@@ -60,6 +76,22 @@ func main() {
 						Name:    "plugin-config",
 						Aliases: []string{"c"},
 						Usage:   "Plugin configuration in format 'plugin:key:value;key:value' (can be specified multiple times)",
+					},
+					&cli.StringFlag{
+						Name:    "error-format",
+						Aliases: []string{"ef"},
+						Usage:   "Error output format: text, json, compact, vscode",
+						Value:   "text",
+					},
+					&cli.StringFlag{
+						Name:    "error-output",
+						Aliases: []string{"eo"},
+						Usage:   "Error output destination: stdout, stderr, or file path",
+						Value:   "stdout",
+					},
+					&cli.BoolFlag{
+						Name:  "error-append",
+						Usage: "Append to error output file instead of truncating",
 					},
 				},
 				Action: processProjectCmd,
@@ -168,6 +200,37 @@ func processFile(c *cli.Context) error {
 		return cli.Exit("Usage: framework file <source-file> [output-file] --plugin <plugin-name> [--plugin <plugin-name>...]", 1)
 	}
 
+	// Create error reporter first to validate format immediately
+	errorFormat := c.String("error-format")
+	errorOutput := c.String("error-output")
+	errorAppend := c.Bool("error-append")
+
+	var dest errors.OutputDestination
+	var filePath string
+
+	switch errorOutput {
+	case "stdout":
+		dest = errors.DestinationStdout
+	case "stderr":
+		dest = errors.DestinationStderr
+	default:
+		dest = errors.DestinationFile
+		filePath = errorOutput
+	}
+
+	reporterConfig := errors.ReporterConfig{
+		Format:            errors.OutputFormat(errorFormat),
+		OutputDestination: dest,
+		FilePath:          filePath,
+		Append:            errorAppend,
+	}
+
+	reporter, err := errors.NewErrorReporter(reporterConfig)
+	if err != nil {
+		return cli.Exit(fmt.Sprintf("Failed to create error reporter: %v", err), 1)
+	}
+	defer reporter.Close()
+
 	sourceFile := c.Args().Get(0)
 	var outputFile string
 	if c.NArg() >= 2 {
@@ -221,18 +284,10 @@ func processFile(c *cli.Context) error {
 		return cli.Exit(fmt.Sprintf("Framework error: %v", err), 1)
 	}
 
-	// Handle structured errors using text formatter
+	// Report errors using the new ErrorReporter
 	if len(result.Errors) > 0 {
-		formatter := formats.NewTextFormatter()
-		config := errors.FormatterConfig{
-			Format: errors.FormatText,
-		}
-
-		formattedOutput, err := formatter.FormatErrors(result.Errors, config)
-		if err != nil {
-			fmt.Printf("Failed to format errors: %v\n", err)
-		} else {
-			fmt.Println(formattedOutput)
+		if err := reporter.ReportErrors(result.Errors); err != nil {
+			fmt.Printf("Failed to report errors: %v\n", err)
 		}
 	}
 
@@ -288,10 +343,15 @@ func processProjectCmd(c *cli.Context) error {
 		return cli.Exit(fmt.Sprintf("Failed to parse plugin config: %v", err), 1)
 	}
 
-	return processProject(projectDir, outputDir, pluginNames, pluginConfigs)
+	// Get error reporting configuration
+	errorFormat := c.String("error-format")
+	errorOutput := c.String("error-output")
+	errorAppend := c.Bool("error-append")
+
+	return processProject(projectDir, outputDir, pluginNames, pluginConfigs, errorFormat, errorOutput, errorAppend)
 }
 
-func processProject(projectDir, outputDir string, pluginNames []string, pluginConfigs map[string]map[string]interface{}) error {
+func processProject(projectDir, outputDir string, pluginNames []string, pluginConfigs map[string]map[string]interface{}, errorFormat, errorOutput string, errorAppend bool) error {
 	absProjectDir, err := filepath.Abs(projectDir)
 	if err != nil {
 		return cli.Exit(fmt.Sprintf("Failed to get absolute path for project directory: %v", err), 1)
@@ -334,6 +394,33 @@ func processProject(projectDir, outputDir string, pluginNames []string, pluginCo
 	}
 
 	fw = fw.AddPlugins(configuredPlugins...)
+
+	// Create error reporter from CLI flags
+	var dest errors.OutputDestination
+	var filePath string
+
+	switch errorOutput {
+	case "stdout":
+		dest = errors.DestinationStdout
+	case "stderr":
+		dest = errors.DestinationStderr
+	default:
+		dest = errors.DestinationFile
+		filePath = errorOutput
+	}
+
+	reporterConfig := errors.ReporterConfig{
+		Format:            errors.OutputFormat(errorFormat),
+		OutputDestination: dest,
+		FilePath:          filePath,
+		Append:            errorAppend,
+	}
+
+	reporter, err := errors.NewErrorReporter(reporterConfig)
+	if err != nil {
+		return cli.Exit(fmt.Sprintf("Failed to create error reporter: %v", err), 1)
+	}
+	defer reporter.Close()
 
 	overlay := make(map[string]string)
 
@@ -404,9 +491,8 @@ func processProject(projectDir, outputDir string, pluginNames []string, pluginCo
 		}
 
 		if len(result.Errors) > 0 {
-			fmt.Printf("  Plugin errors for %s:\n", relPath)
-			for _, err := range result.Errors {
-				fmt.Printf("    - %v\n", err)
+			if err := reporter.ReportErrors(result.Errors); err != nil {
+				fmt.Printf("Failed to report errors for %s: %v\n", relPath, err)
 			}
 		}
 
