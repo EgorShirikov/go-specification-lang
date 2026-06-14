@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 )
 
 type Runner struct {
@@ -162,8 +164,11 @@ func (r *Runner) buildDockerCommand(ctx context.Context, inputFile string) (*exe
 
 	containerPath := "/input/" + inputFileName
 
+	// Generate a unique container name based on input file
+	containerName := "gobra-" + strings.TrimSuffix(inputFileName, ".gobra") + "-" + fmt.Sprintf("%d", time.Now().UnixNano())
+
 	args := []string{
-		"run", "--rm",
+		"run", "--rm", "--name", containerName,
 		"-v", absInputFile + ":" + containerPath + ":ro",
 		s.DockerImage,
 	}
@@ -174,6 +179,15 @@ func (r *Runner) buildDockerCommand(ctx context.Context, inputFile string) (*exe
 	args = append(args, gobraArgs...)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
+	
+	// Start a goroutine to stop the container when context is cancelled
+	go func() {
+		<-ctx.Done()
+		// Stop the container when context is cancelled
+		stopCmd := exec.Command("docker", "stop", containerName)
+		stopCmd.Run() // Ignore errors, container might not exist
+	}()
+	
 	return cmd, nil
 }
 
