@@ -9,6 +9,8 @@ import (
 	"strings"
 
 	"gpma/framework"
+	"gpma/framework/errors"
+	"gpma/framework/errors/formats"
 	"gpma/framework/plugin"
 	_ "gpma/framework/plugin/dynamic_checks"
 	_ "gpma/framework/plugin/examples"
@@ -219,9 +221,25 @@ func processFile(c *cli.Context) error {
 		return cli.Exit(fmt.Sprintf("Framework error: %v", err), 1)
 	}
 
+	// Handle structured errors using text formatter
 	if len(result.Errors) > 0 {
+		formatter := formats.NewTextFormatter()
+		config := errors.FormatterConfig{
+			Format: errors.FormatText,
+		}
+
+		formattedOutput, err := formatter.FormatErrors(result.Errors, config)
+		if err != nil {
+			fmt.Printf("Failed to format errors: %v\n", err)
+		} else {
+			fmt.Println(formattedOutput)
+		}
+	}
+
+	// Handle fatal errors
+	if len(result.FatalErrors) > 0 {
 		fmt.Println("Plugin errors:")
-		for _, err := range result.Errors {
+		for _, err := range result.FatalErrors {
 			fmt.Printf("  - %v\n", err)
 		}
 	}

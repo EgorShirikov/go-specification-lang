@@ -5,6 +5,7 @@ import (
 
 	"gpma/framework/codegen"
 	"gpma/framework/data"
+	"gpma/framework/errors"
 	"gpma/framework/gosl/bind"
 	"gpma/framework/gosl/front"
 	"gpma/framework/parser"
@@ -59,7 +60,8 @@ func (f *Framework) ListAvailablePlugins() []string {
 
 type Result struct {
 	GeneratedCode string
-	Errors        []error
+	Errors        []*errors.Error
+	FatalErrors   []error
 	Modified      bool
 	ASTData       *data.ASTData
 }
@@ -85,9 +87,10 @@ func (f *Framework) ProcessFile(filepath string) (*Result, error) {
 	}
 
 	result := &Result{
-		Errors:   runnerResult.Errors,
-		Modified: runnerResult.HasModifications,
-		ASTData:  astData,
+		Errors:      runnerResult.Errors,
+		FatalErrors: runnerResult.FatalErrors,
+		Modified:    runnerResult.HasModifications,
+		ASTData:     astData,
 	}
 
 	if runnerResult.HasModifications {
@@ -115,9 +118,10 @@ func (f *Framework) ProcessSource(source []byte) (*Result, error) {
 	}
 
 	result := &Result{
-		Errors:   runnerResult.Errors,
-		Modified: runnerResult.HasModifications,
-		ASTData:  astData,
+		Errors:      runnerResult.Errors,
+		FatalErrors: runnerResult.FatalErrors,
+		Modified:    runnerResult.HasModifications,
+		ASTData:     astData,
 	}
 
 	if runnerResult.HasModifications {

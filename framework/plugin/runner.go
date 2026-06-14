@@ -3,11 +3,13 @@ package plugin
 import (
 	"fmt"
 	"gpma/framework/data"
+	"gpma/framework/errors"
 )
 
 type RunnerResult struct {
 	HasModifications bool
-	Errors           []error
+	Errors           []*errors.Error
+	FatalErrors      []error
 }
 
 type PluginRunner struct {
@@ -23,7 +25,8 @@ func NewPluginRunner(plugins []Plugin) *PluginRunner {
 func (r *PluginRunner) Run(astData *data.ASTData) (*RunnerResult, error) {
 	result := &RunnerResult{
 		HasModifications: false,
-		Errors:           make([]error, 0),
+		Errors:           make([]*errors.Error, 0),
+		FatalErrors:      make([]error, 0),
 	}
 
 	for _, plugin := range r.plugins {
@@ -34,18 +37,21 @@ func (r *PluginRunner) Run(astData *data.ASTData) (*RunnerResult, error) {
 
 		pluginResult := plugin.Process(astData)
 
-		if pluginResult.Error != nil {
+		if pluginResult.FatalError != nil {
 			err := astData.RestoreFromSnapshot(snapshot)
 			if err != nil {
 				return nil, fmt.Errorf("failed to restore snapshot after plugin %s error: %w", plugin.Name(), err)
 			}
-			result.Errors = append(result.Errors, fmt.Errorf("plugin %s failed: %w", plugin.Name(), pluginResult.Error))
+			result.FatalErrors = append(result.FatalErrors, fmt.Errorf("plugin %s failed: %w", plugin.Name(), pluginResult.FatalError))
 			continue
 		}
 
 		if pluginResult.HasModifications() {
 			result.HasModifications = true
 		}
+
+		// Collect structured errors from plugin
+		result.Errors = append(result.Errors, pluginResult.Errors...)
 	}
 
 	return result, nil

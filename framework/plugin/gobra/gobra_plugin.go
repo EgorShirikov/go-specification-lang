@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"gpma/framework/data"
+	"gpma/framework/errors"
 	"gpma/framework/gobra_runner"
 	"gpma/framework/plugin"
 	"os"
@@ -30,7 +31,7 @@ func NewGobraPlugin() *GobraPlugin {
 }
 
 func (p *GobraPlugin) Name() string {
-	return "GobraPlugin"
+	return "gobra"
 }
 
 func (p *GobraPlugin) Configure(params map[string]interface{}) error {
@@ -77,11 +78,28 @@ func (p *GobraPlugin) Process(astData *data.ASTData) *plugin.PluginResult {
 
 	// Generate Gobra code with hybrid mapping
 	sourceFile := astData.FileSet.File(astData.File.Pos()).Name()
+	generated, err := p.generateGobraCode(astData, sourceFile)
+	if err != nil {
+		return result.WithFatalError(fmt.Errorf("failed to generate gobra code: %w", err))
+	}
+
+	// Run verification
+	verifResult, err := p.runVerification(generated)
+	if err != nil {
+		return result.WithFatalError(fmt.Errorf("verification failed: %w", err))
+	}
+
+	// Convert verification errors to unified format
+	verificationErrors := p.convertVerificationErrors(verifResult, astData, sourceFile)
+
+	return result.WithErrors(verificationErrors)
+}
+
+// generateGobraCode generates Gobra code from AST
+func (p *GobraPlugin) generateGobraCode(astData *data.ASTData, sourceFile string) (*GobraGenerationResult, error) {
 	generated, err := GenerateGobra(astData, sourceFile)
 	if err != nil {
-		result.WithError(fmt.Errorf("failed to generate gobra code: %w", err))
-		fmt.Printf("Generation error: %v\n", err)
-		return result
+		return nil, err
 	}
 
 	// Debug: dump generated Gobra code
@@ -94,17 +112,19 @@ func (p *GobraPlugin) Process(astData *data.ASTData) *plugin.PluginResult {
 		}
 	}
 
-	// Create verification request with all needed data
+	return generated, nil
+}
+
+// runVerification executes Gobra verification
+func (p *GobraPlugin) runVerification(generated *GobraGenerationResult) (*gobra_runner.VerificationResult, error) {
 	req := gobra_runner.VerificationRequest{
 		GeneratedCode: generated.GobraCode,
 		Mapping:       generated.HybridMapping,
 	}
 
-	// Run Gobra verification
 	verifResult, err := p.runner.Verify(context.Background(), req)
 	if err != nil {
-		result.WithError(fmt.Errorf("verification failed: %w", err))
-		return result
+		return nil, err
 	}
 
 	// Debug: show Gobra analyzer output
@@ -112,27 +132,75 @@ func (p *GobraPlugin) Process(astData *data.ASTData) *plugin.PluginResult {
 		fmt.Printf("[DEBUG] Gobra analyzer output:\n%s\n", verifResult.RawOutput)
 	}
 
-	// Process verification results
-	if !verifResult.Success {
-		if verifResult.TimedOut {
-			result.WithError(fmt.Errorf("verification timed out"))
-		} else if len(verifResult.Errors) > 0 {
-			var errorMsgs []string
-			for _, gobraError := range verifResult.Errors {
-				var errMsg string
-				if gobraError.Position.File != "" {
-					// Convert offset to line:column for display
-					line, col, _ := gobra_runner.OffsetToLineCol([]byte(astData.Source), gobraError.Position.Offset)
-					errMsg = fmt.Sprintf("%s:%d:%d: %s", gobraError.Position.File, line, col, gobraError.Message)
-				} else {
-					// No position information available
-					errMsg = fmt.Sprintf("%s: %s", sourceFile, gobraError.Message)
-				}
-				errorMsgs = append(errorMsgs, errMsg)
-			}
-			result.WithError(fmt.Errorf("verification failed: %s", strings.Join(errorMsgs, "\n")))
+	return verifResult, nil
+}
+
+// convertVerificationErrors converts Gobra errors to unified format
+func (p *GobraPlugin) convertVerificationErrors(
+	verifResult *gobra_runner.VerificationResult,
+	astData *data.ASTData,
+	sourceFile string,
+) []*errors.Error {
+	if verifResult.Success || len(verifResult.Errors) == 0 {
+		return nil
+	}
+
+	if verifResult.TimedOut {
+		return []*errors.Error{
+			{
+				Position: errors.Position{
+					File:   sourceFile,
+					Line:   1,
+					Column: 1,
+				},
+				Message:  "verification timed out",
+				Severity: errors.SeverityCritical,
+				Source:   p.Name(),
+			},
 		}
 	}
 
-	return result
+	unifiedErrors := make([]*errors.Error, 0, len(verifResult.Errors))
+	for i := range verifResult.Errors {
+		unifiedError := p.convertSingleError(&verifResult.Errors[i], astData, sourceFile)
+		unifiedErrors = append(unifiedErrors, unifiedError)
+	}
+
+	return unifiedErrors
+}
+
+// convertSingleError converts a single Gobra error to unified format
+func (p *GobraPlugin) convertSingleError(
+	gobraError *gobra_runner.VerificationError,
+	astData *data.ASTData,
+	sourceFile string,
+) *errors.Error {
+	var position errors.Position
+
+	if gobraError.Position.File != "" {
+		line, col, _ := gobra_runner.OffsetToLineCol([]byte(astData.Source), gobraError.Position.Offset)
+		position = errors.Position{
+			File:   gobraError.Position.File,
+			Line:   line,
+			Column: col,
+		}
+	} else {
+		position = errors.Position{
+			File:   sourceFile,
+			Line:   1,
+			Column: 1,
+		}
+	}
+
+	severity := errors.SeverityCritical
+	if strings.Contains(strings.ToLower(gobraError.Message), "warning") {
+		severity = errors.SeverityWarning
+	}
+
+	return &errors.Error{
+		Position: position,
+		Message:  gobraError.Message,
+		Severity: severity,
+		Source:   p.Name(),
+	}
 }

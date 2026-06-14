@@ -46,4 +46,7 @@ type Error struct {
 
 	// Severity is the error severity level
 	Severity Severity `json:"severity"`
+
+	// Source identifies which plugin generated this error (must be set by plugin)
+	Source string `json:"source"`
 }
