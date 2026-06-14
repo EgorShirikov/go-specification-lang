@@ -9,6 +9,7 @@ import (
 	"gpma/framework/plugin"
 	"os"
 	"strings"
+	"time"
 )
 
 func init() {
@@ -53,6 +54,11 @@ func (p *GobraPlugin) Configure(params map[string]interface{}) error {
 			settings.GobraJAR = s
 		}
 	}
+	if val, ok := params["gobra_bin"]; ok {
+		if s, ok := val.(string); ok {
+			settings.GobraBin = s
+		}
+	}
 	if val, ok := params["z3_exe"]; ok {
 		if s, ok := val.(string); ok {
 			settings.Z3Exe = s
@@ -61,6 +67,43 @@ func (p *GobraPlugin) Configure(params map[string]interface{}) error {
 	if val, ok := params["docker_image"]; ok {
 		if s, ok := val.(string); ok {
 			settings.DockerImage = s
+		}
+	}
+	if val, ok := params["timeout"]; ok {
+		if s, ok := val.(string); ok {
+			if duration, err := time.ParseDuration(s); err == nil {
+				settings.Timeout = duration
+			}
+		}
+	}
+	if val, ok := params["log_level"]; ok {
+		if s, ok := val.(string); ok {
+			settings.LogLevel = s
+		}
+	}
+	if val, ok := params["no_information"]; ok {
+		if b, ok := val.(bool); ok {
+			settings.NoInformation = b
+		}
+	}
+	if val, ok := params["parallelize_branches"]; ok {
+		if b, ok := val.(bool); ok {
+			settings.ParallelizeBranches = b
+		}
+	}
+	if val, ok := params["assume_injectivity_on_inhale"]; ok {
+		if b, ok := val.(bool); ok {
+			settings.AssumeInjectivityOnInhale = b
+		}
+	}
+	if val, ok := params["check_overflow"]; ok {
+		if b, ok := val.(bool); ok {
+			settings.CheckOverflow = b
+		}
+	}
+	if val, ok := params["extra_flags"]; ok {
+		if flags, ok := val.([]string); ok {
+			settings.ExtraFlags = flags
 		}
 	}
 	if val, ok := params["debug"]; ok {

@@ -111,34 +111,34 @@ func (r *Runner) validateDockerConfig() error {
 }
 
 // buildGobraArgs builds Gobra command line arguments
-func (r *Runner) buildGobraArgs(inputFile string) []string {
+func (r *Runner) buildGobraArgs(inputFile string, s Settings) []string {
 	// s := r.settings
 	var args []string
 
 	args = append(args, "-i", inputFile)
 
-	// if s.GobraBackend != "" {
-	// 	args = append(args, "--backend", s.GobraBackend)
-	// }
-	// if s.Z3Exe != "" {
-	// 	args = append(args, "--z3Exe", s.Z3Exe)
-	// }
-	// if s.LogLevel != "" {
-	// 	args = append(args, "--logLevel", s.LogLevel)
-	// }
-	// if s.NoInformation {
-	// 	args = append(args, "--noInformation")
-	// }
-	// if s.ParallelizeBranches {
-	// 	args = append(args, "--parallelizeBranches")
-	// }
-	// if s.AssumeInjectivityOnInhale {
-	// 	args = append(args, "--assumeInjectivityOnInhale")
-	// }
-	// if s.CheckOverflow {
-	// 	args = append(args, "--overflow")
-	// }
-	// args = append(args, s.ExtraFlags...)
+	if s.GobraBackend != "" {
+		args = append(args, "--backend", s.GobraBackend)
+	}
+	if s.Z3Exe != "" {
+		args = append(args, "--z3Exe", s.Z3Exe)
+	}
+	if s.LogLevel != "" {
+		args = append(args, "--logLevel", s.LogLevel)
+	}
+	if s.NoInformation {
+		args = append(args, "--noInformation")
+	}
+	if s.ParallelizeBranches {
+		args = append(args, "--parallelizeBranches")
+	}
+	if s.AssumeInjectivityOnInhale {
+		args = append(args, "--assumeInjectivityOnInhale")
+	}
+	if s.CheckOverflow {
+		args = append(args, "--overflow")
+	}
+	args = append(args, s.ExtraFlags...)
 
 	return args
 }
@@ -170,7 +170,7 @@ func (r *Runner) buildDockerCommand(ctx context.Context, inputFile string) (*exe
 
 	// Add Gobra arguments (reuse the same logic)
 	// Use relative path since we're setting working directory to /workspace
-	gobraArgs := r.buildGobraArgs(containerPath)
+	gobraArgs := r.buildGobraArgs(containerPath, s)
 	args = append(args, gobraArgs...)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
@@ -182,7 +182,7 @@ func (r *Runner) buildNativeCommand(ctx context.Context, inputFile string) (*exe
 	s := r.settings
 
 	if s.GobraBin != "" {
-		args := r.buildGobraArgs(inputFile)
+		args := r.buildGobraArgs(inputFile, s)
 		cmd := exec.CommandContext(ctx, s.GobraBin, args...)
 		return cmd, nil
 	}
@@ -192,7 +192,7 @@ func (r *Runner) buildNativeCommand(ctx context.Context, inputFile string) (*exe
 	}
 
 	javaArgs := []string{"-jar", s.GobraJAR}
-	javaArgs = append(javaArgs, r.buildGobraArgs(inputFile)...)
+	javaArgs = append(javaArgs, r.buildGobraArgs(inputFile, s)...)
 	cmd := exec.CommandContext(ctx, s.JavaPath, javaArgs...)
 	return cmd, nil
 }

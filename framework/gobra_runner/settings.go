@@ -58,11 +58,9 @@ func DefaultSettings() Settings {
 		JavaPath: "java",
 		GobraJAR: "gobra.jar",
 		GobraBin: "gobra",
-		Z3Exe:    "z3",
 
-		GobraBackend: "SILICON", // Uppercase for Docker compatibility
-		Timeout:      120 * time.Second,
-		LogLevel:     "ERROR",
+		Timeout:  120 * time.Second,
+		LogLevel: "ERROR",
 
 		NoInformation:       false, // Disabled - not supported by Docker image
 		ParallelizeBranches: false,
