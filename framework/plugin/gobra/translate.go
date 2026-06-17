@@ -46,9 +46,12 @@ package gobra
 import (
 	"fmt"
 	"go/ast"
+	"go/printer"
+	"go/token"
 	"gpma/framework/data"
 	gobra_runner "gpma/framework/gobra_runner"
 	specir "gpma/framework/gosl/ir"
+	"sort"
 	"strings"
 )
 
@@ -58,13 +61,90 @@ type GobraGenerationResult struct {
 	HybridMapping *gobra_runner.HybridMapping
 }
 
+type Replacement struct {
+	SourcePos int
+	SourceEnd   int
+	Insertion string
+	PredicateSpan *gobra_runner.SourcePosition
+}
+
 // GobraGenerator generates Gobra code with automatic tracking of additions
 type GobraGenerator struct {
 	builder       strings.Builder // For building generated code
 	HybridMapping *gobra_runner.HybridMapping
 	sourceOffset  int // Current position in source code
 	currentOffset int // Current position in generated code
+	varCount      int 
+	fset          *token.FileSet
 	sourceFile    string
+	sourceCode    string
+	replacements  []Replacement
+}
+
+func (g *GobraGenerator) AddReplacement(sourcePos int, sourceEnd int, insertion string, predicateSpan *gobra_runner.SourcePosition) {
+	repl := Replacement{
+		SourcePos: sourcePos,
+		SourceEnd: sourceEnd,
+		Insertion: insertion,
+		PredicateSpan: predicateSpan,
+	}
+
+	g.replacements = append(g.replacements, repl)
+}
+
+func (g *GobraGenerator) Render() (string, error) {
+    sort.SliceStable(g.replacements, func(i, j int) bool {
+        return g.replacements[i].SourcePos < g.replacements[j].SourcePos
+    })
+
+    // Validate: no overlapping replacements.
+    for i := 1; i < len(g.replacements); i++ {
+        prev, curr := g.replacements[i-1], g.replacements[i]
+        if prev.SourceEnd > curr.SourcePos {
+            return "", fmt.Errorf("overlapping replacements at [%d,%d) and [%d,%d)",
+                prev.SourcePos, prev.SourceEnd,
+                curr.SourcePos, curr.SourceEnd)
+        }
+    }
+
+    var sb strings.Builder
+    cursor := 0
+
+    for _, r := range g.replacements {
+        if r.SourcePos > len(g.sourceCode) || r.SourceEnd > len(g.sourceCode) {
+            return "", fmt.Errorf("replacement [%d,%d) out of bounds (source len %d)",
+                r.SourcePos, r.SourceEnd, len(g.sourceCode))
+        }
+        if r.SourcePos < cursor {
+            return "", fmt.Errorf("replacement at %d starts before current cursor %d",
+                r.SourcePos, cursor)
+        }
+
+        // Copy source unchanged up to the replacement start.
+        sb.WriteString(g.sourceCode[cursor:r.SourcePos])
+
+		interval := gobra_runner.Interval{
+			GenStart:      sb.Len(),
+			GenEnd:        sb.Len() + len(r.Insertion) - 1,
+			SourcePos:     gobra_runner.SourcePosition{ File: g.sourceFile, Offset: r.SourcePos, },
+			SourceEnd:     gobra_runner.SourcePosition{ File: g.sourceFile, Offset: r.SourceEnd, },
+			PredicateSpan: r.PredicateSpan,
+		}
+		err := g.HybridMapping.AddInterval(interval)
+		if err != nil {
+			return "", fmt.Errorf("failed to track addition: %w", err)
+		}
+
+        // Write the replacement.
+        sb.WriteString(r.Insertion)
+        // Advance cursor past the replaced region.
+        cursor = r.SourceEnd
+    }
+
+    // Copy any remaining source after the last replacement.
+    sb.WriteString(g.sourceCode[cursor:])
+
+    return sb.String(), nil
 }
 
 // TrackAddition automatically tracks a code addition by measuring position changes
@@ -94,6 +174,7 @@ func (g *GobraGenerator) TrackAddition(
 		GenStart:      genStart,
 		GenEnd:        genEnd,
 		SourcePos:     sourcePos,
+		SourceEnd:     sourcePos,
 		PredicateSpan: predicateSpan,
 	}
 
@@ -140,15 +221,80 @@ func (g *GobraGenerator) CurrentPosition() int {
 	return g.builder.Len() + g.currentOffset
 }
 
-func (g *GobraGenerator) GenerateGobraFuncContract(node *ast.Node, funcContract *specir.FuncContract, sourceOffset int) string {
-	g.builder.Reset()
-	g.currentOffset = sourceOffset // Update offset for this generation
+func (g *GobraGenerator) freshResultName(fn *ast.FuncDecl) string {
+    // Collect all names already used in the result list.
+    used := make(map[string]bool)
+    if fn.Type.Results != nil {
+        for _, field := range fn.Type.Results.List {
+            for _, name := range field.Names {
+                used[name.Name] = true
+            }
+        }
+    }
 
-	sourcePos := gobra_runner.SourcePosition{
-		File:   g.sourceFile,
-		Offset: funcContract.Span.End,
-	}
+    // Also collect names from parameters to avoid shadowing.
+    if fn.Type.Params != nil {
+        for _, field := range fn.Type.Params.List {
+            for _, name := range field.Names {
+                used[name.Name] = true
+            }
+        }
+    }
 
+    // Increment until we find a name not in use.
+    for {
+        g.varCount++
+        candidate := fmt.Sprintf("r%d", g.varCount)
+        if !used[candidate] {
+            return candidate
+        }
+    }
+}
+
+// nameAllResults mutates fn.Type.Results in-place by assigning fresh names
+// to every unnamed result, then returns the result list rendered as a string.
+func (g *GobraGenerator) nameAllResults(fn *ast.FuncDecl) string {
+    if fn.Type.Results == nil || len(fn.Type.Results.List) == 0 {
+        return ""
+    }
+
+    // Mutate the AST: assign fresh names to every unnamed result.
+    for _, field := range fn.Type.Results.List {
+        if len(field.Names) == 0 {
+            field.Names = []*ast.Ident{ast.NewIdent(g.freshResultName(fn))}
+        } else {
+            for _, name := range field.Names {
+                if name.Name == "" || name.Name == "_" {
+                    name.Name = g.freshResultName(fn)
+                }
+            }
+        }
+    }
+
+    // Render the (now fully named) result list into a local string builder.
+    var sb strings.Builder
+    sb.WriteString("(")
+    for i, field := range fn.Type.Results.List {
+        if i > 0 {
+            sb.WriteString(", ")
+        }
+        for j, name := range field.Names {
+            if j > 0 {
+                sb.WriteString(", ")
+            }
+            sb.WriteString(name.Name)
+        }
+        sb.WriteString(" ")
+        // Use printer to render the type node into the local builder.
+        if err := printer.Fprint(&sb, g.fset, field.Type); err != nil {
+            sb.WriteString("/* error rendering type */")
+        }
+    }
+    sb.WriteString(")")
+    return sb.String()
+}
+
+func (g *GobraGenerator) GenerateGobraFuncContract(node *ast.Node, funcContract *specir.FuncContract) {
 	funcDecl, ok := (*node).(*ast.FuncDecl)
 	if !ok {
 		panic("Received not function decl node to contract generation")
@@ -157,143 +303,125 @@ func (g *GobraGenerator) GenerateGobraFuncContract(node *ast.Node, funcContract 
 	p := &Printer{}
 	if funcDecl.Type.Results != nil && funcDecl.Type.Results.List != nil {
 		for _, field := range funcDecl.Type.Results.List {
-			for i, name := range field.Names {
-				if name == nil {
-					p.resultNames = append(p.resultNames, fmt.Sprintf("__result_%d", i))
-				} else {
-					p.resultNames = append(p.resultNames, name.Name)
-				}
+			if len(field.Names) == 0 {
+				panic("unnamed results")
 			}
+			p.resultNames = append(p.resultNames, field.Names[0].Name)
 		}
 	}
 
 	// Generate requires with automatic tracking
-	for i, requires := range funcContract.Requires {
-		if i > 0 {
-			g.builder.WriteByte('\n')
+	sourcePos := funcContract.Span.End
+	for _, requires := range funcContract.Requires {
+		g.AddReplacement(sourcePos, sourcePos, "\n", nil)
+		g.AddReplacement(sourcePos, sourcePos, "requires ", nil)
+
+		predicateSpan := &gobra_runner.SourcePosition{
+			File:   requires.Span.File,
+			Offset: requires.Span.Start,
 		}
 
-		_, err := g.TrackPredicate(
-			func() string {
-				p.buf.Reset()
-				p.PrintExpr(requires.Expr)
-				return "requires " + p.buf.String()
-			},
-			requires.Span,
-			sourcePos,
-		)
-		if err != nil {
-			fmt.Printf("Warning: failed to track requires: %v\n", err)
-		}
+		p.buf.Reset()
+		p.PrintExpr(requires.Expr)
+		g.AddReplacement(sourcePos, sourcePos, p.buf.String(), predicateSpan)
 	}
 
 	// Generate ensures with automatic tracking
 	for _, ensures := range funcContract.Ensures {
-		if g.builder.Len() > 0 {
-			g.builder.WriteByte('\n')
+		g.AddReplacement(sourcePos, sourcePos, "\n", nil)
+		g.AddReplacement(sourcePos, sourcePos, "ensures ", nil)
+
+		predicateSpan := &gobra_runner.SourcePosition{
+			File:   ensures.Span.File,
+			Offset: ensures.Span.Start,
 		}
 
-		_, err := g.TrackPredicate(
-			func() string {
-				p.buf.Reset()
-				p.PrintExpr(ensures.Expr)
-				return "ensures " + p.buf.String()
-			},
-			ensures.Span,
-			sourcePos,
-		)
-		if err != nil {
-			fmt.Printf("Warning: failed to track ensures: %v\n", err)
-		}
+		p.buf.Reset()
+		p.PrintExpr(ensures.Expr)
+		g.AddReplacement(sourcePos, sourcePos, p.buf.String(), predicateSpan)
 	}
-
-	return g.builder.String()
 }
 
-func (g *GobraGenerator) GenerateGobraLoopSpec(loopSpec *specir.LoopSpec, sourceOffset int) string {
-	g.builder.Reset()
-	g.currentOffset = sourceOffset // Update offset for this generation
+func (g *GobraGenerator) GenerateGobraLoopSpec(loopSpec *specir.LoopSpec) {
+	sourcePos := loopSpec.Span.End
+	for _, invariant := range loopSpec.Invariants {
+		g.AddReplacement(sourcePos, sourcePos, "\n", nil)
+		g.AddReplacement(sourcePos, sourcePos, "invariant ", nil)
 
-	sourcePos := gobra_runner.SourcePosition{
-		File:   g.sourceFile,
-		Offset: loopSpec.Span.End,
-	}
-
-	for i, invariant := range loopSpec.Invariants {
-		if i > 0 {
-			g.builder.WriteByte('\n')
+		predicateSpan := &gobra_runner.SourcePosition{
+			File:   invariant.Span.File,
+			Offset: invariant.Span.Start,
 		}
 
-		_, err := g.TrackPredicate(
-			func() string {
-				return "invariant " + PrintExpr(invariant.Expr)
-			},
-			invariant.Span,
-			sourcePos,
-		)
-		if err != nil {
-			fmt.Printf("Warning: failed to track invariant: %v\n", err)
-		}
+		g.AddReplacement(sourcePos, sourcePos, PrintExpr(invariant.Expr), predicateSpan)
 	}
-
-	return g.builder.String()
 }
 
-func (g *GobraGenerator) GenerateGobraAsserts(asserts *specir.AssertSpec, sourceOffset int) string {
-	g.builder.Reset()
-	g.currentOffset = sourceOffset // Update offset for this generation
+func (g *GobraGenerator) GenerateGobraAsserts(asserts *specir.AssertSpec) {
+	sourcePos := asserts.Span.End
 
-	sourcePos := gobra_runner.SourcePosition{
-		File:   g.sourceFile,
-		Offset: asserts.Span.End,
+	g.AddReplacement(sourcePos, sourcePos, "\nassert ", nil)
+	predicateSpan := &gobra_runner.SourcePosition{
+		File:   asserts.Span.File,
+		Offset: asserts.Span.Start,
 	}
-
-	_, err := g.TrackPredicate(
-		func() string {
-			return "assert " + PrintExpr(asserts.Assertion.Expr) + ";"
-		},
-		asserts.Assertion.Span,
-		sourcePos,
-	)
-	if err != nil {
-		fmt.Printf("Warning: failed to track assert: %v\n", err)
-	}
-
-	return g.builder.String()
+	g.AddReplacement(sourcePos, sourcePos, PrintExpr(asserts.Assertion.Expr), predicateSpan)
 }
 
-func (g *GobraGenerator) GenerateGobraPredicate(predicate *specir.LogicDecl, sourceOffset int) string {
-	g.builder.Reset()
-	g.currentOffset = sourceOffset
+func (g *GobraGenerator) GenerateGobraPredicate(predicate *specir.LogicDecl) {
+	sourcePos := len(g.sourceCode)
 
-	g.builder.WriteString("ghost\ndecreases\n")
-	g.builder.WriteString(fmt.Sprintf("pure func %s(", predicate.Name))
+	g.AddReplacement(sourcePos, sourcePos, "\nghost\ndecreases\n", nil)
+	g.AddReplacement(sourcePos, sourcePos, fmt.Sprintf("pure func %s(", predicate.Name), nil)
 	for i, param := range predicate.Params {
 		if i > 0 {
-			g.builder.WriteString(", ")
+			g.AddReplacement(sourcePos, sourcePos, ", ", nil)
 		}
 
-		g.WriteString(param.Name)
-		g.WriteString(" ")
-		g.WriteString(typeExprStr(param.Type))
+		g.AddReplacement(sourcePos, sourcePos, param.Name, nil)
+		g.AddReplacement(sourcePos, sourcePos, " ", nil)
+		g.AddReplacement(sourcePos, sourcePos, typeExprStr(param.Type), nil)
 	}
-	g.builder.WriteString(") bool {\n\t")
-	g.builder.WriteString("return " + PrintExpr(predicate.Body))
-	g.builder.WriteString("\n}\n")
+	g.AddReplacement(sourcePos, sourcePos, ") bool {\n\treturn ", nil)
 
-	return g.builder.String()
+	predicateSpan := &gobra_runner.SourcePosition{
+		File:   predicate.Span.File,
+		Offset: predicate.Span.Start,
+	}
+	g.AddReplacement(sourcePos, sourcePos, PrintExpr(predicate.Body), predicateSpan)
+
+	g.AddReplacement(sourcePos, sourcePos, "\n}\n", nil)
 }
 
 // GenerateGobra generates Gobra code from AST data with automatic tracking
 // Returns GobraGenerationResult containing both code and hybrid mapping
 func GenerateGobra(astData *data.ASTData, sourceFile string) (*GobraGenerationResult, error) {
-	type Segment struct {
-		node   *ast.Node
-		info   *data.AdditionalInfo
-		offset int
+	g := &GobraGenerator{
+		HybridMapping: gobra_runner.NewHybridMapping(sourceFile),
+		sourceOffset: 0,
+		currentOffset: 0,
+		sourceFile:    sourceFile,
+		sourceCode: astData.Source,
+		fset: astData.FileSet,
 	}
 
-	acsl_segments := []Segment{}
+	for _, decl := range astData.File.Decls {
+		switch decl.(type) {
+		case *ast.FuncDecl: {
+			sourceResultSection := decl.(*ast.FuncDecl).Type.Results
+			if sourceResultSection == nil {
+				continue
+			}
+
+			sourcePos := astData.FileSet.Position(sourceResultSection.Pos()).Offset
+			sourceEnd := astData.FileSet.Position(sourceResultSection.End()).Offset
+
+			namedResultsSection := g.nameAllResults(decl.(*ast.FuncDecl))
+			
+			g.AddReplacement(sourcePos, sourceEnd, namedResultsSection, nil)
+		}
+		}
+	}
 
 	ast.Inspect(astData.File, func(n ast.Node) bool {
 		if n == nil {
@@ -302,69 +430,33 @@ func GenerateGobra(astData *data.ASTData, sourceFile string) (*GobraGenerationRe
 
 		node_info, ok := astData.NodeInfo[n]
 		if ok {
-			position := func() int {
-				if node_info.FuncContract != nil {
-					return node_info.FuncContract.Span.End
-				} else if node_info.LoopSpec != nil {
-					return node_info.LoopSpec.Span.End
-				} else if node_info.Asserts != nil {
-					return node_info.Asserts.Span.End
-				}
-				panic("Empty NpdeInfo")
-			}()
-
-			acsl_segments = append(acsl_segments, Segment{&n, node_info, position})
+			if node_info.FuncContract != nil {
+				g.GenerateGobraFuncContract(&n, node_info.FuncContract)
+			} else if node_info.LoopSpec != nil {
+				g.GenerateGobraLoopSpec(node_info.LoopSpec)
+			} else if node_info.Asserts != nil {
+				g.GenerateGobraAsserts(node_info.Asserts)
+			} else {
+				panic("Empty NodeInfo")
+			}
 		}
 
 		return true
 	})
 
-	g := &GobraGenerator{
-		HybridMapping: gobra_runner.NewHybridMapping(sourceFile),
-		sourceOffset: 0,
-		currentOffset: 0,
-		sourceFile:    sourceFile,
-	}
-
-	builder := strings.Builder{}
-
-	for _, segment := range acsl_segments {
-		if g.sourceOffset < segment.offset {
-			builder.WriteString(astData.Source[g.sourceOffset:segment.offset])
-			builder.WriteString("\n")
-			g.sourceOffset = segment.offset
-		}
-
-		section_text := func() string {
-			if segment.info.FuncContract != nil {
-				return g.GenerateGobraFuncContract(segment.node, segment.info.FuncContract, builder.Len())
-			} else if segment.info.LoopSpec != nil {
-				return g.GenerateGobraLoopSpec(segment.info.LoopSpec, builder.Len())
-			} else if segment.info.Asserts != nil {
-				return g.GenerateGobraAsserts(segment.info.Asserts, builder.Len())
-			}
-			panic("Empty contract")
-		}()
-
-		builder.WriteString(section_text)
-	}
-
-	if g.sourceOffset < len(astData.Source) {
-		builder.WriteString(astData.Source[g.sourceOffset:])
-		builder.WriteString("\n")
-		g.sourceOffset = len(astData.Source)
-	}
-
 	for _, specDecl := range astData.Spec.LogicDecls {
 		if specDecl.Kind == specir.LogicPredicate {
-			builder.WriteString(
-				g.GenerateGobraPredicate(specDecl, builder.Len()),
-			)
+			g.GenerateGobraPredicate(specDecl)
 		}
+	}
+
+	generated, err := g.Render()
+	if err != nil {
+		return nil, err
 	}
 
 	return &GobraGenerationResult{
-		GobraCode:     builder.String(),
+		GobraCode:     generated,
 		HybridMapping: g.HybridMapping,
 	}, nil
 }
